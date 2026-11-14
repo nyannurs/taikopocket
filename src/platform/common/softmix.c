@@ -69,12 +69,18 @@ bool sm_music_starved(void) { return sm.starved; }
 int64_t sm_music_pos(void) { return sm.pos; }
 bool sm_music_advancing(void) { return sm.running && !sm.starved; }
 
+/* the shares of the gateware's 40960-sample memory */
+uint32_t sm_hit_room(int slot) {
+    static const uint32_t room[PF_HIT_SLOTS] = {16384, 12288, 6144, 6144};
+    return slot >= 0 && slot < PF_HIT_SLOTS ? room[slot] : 0;
+}
+
 void sm_hit_load(int slot, const int16_t *pcm, uint32_t samples, uint32_t rate) {
     if (slot < 0 || slot >= PF_HIT_SLOTS) {
         return;
     }
-    if (samples > PF_HIT_MAX_SAMPLES) {
-        samples = PF_HIT_MAX_SAMPLES;
+    if (samples > sm_hit_room(slot)) {
+        samples = sm_hit_room(slot);
     }
     memcpy(sm.hit_pcm[slot], pcm, samples * sizeof(int16_t));
     sm.hit_len[slot] = samples;

@@ -37,9 +37,9 @@ enum { R_ID, R_CTRL, R_CMD, R_GAIN, R_VOL_MUSIC, R_VOL_HITS, R_POS_LO, R_POS_HI,
        R_RING_BYTES, R_FED, R_CONSUMED, R_FORMAT, R_HIT_ADDR, R_HIT_DATA, R_HIT_LEN0, R_HIT_LEN1, R_HIT_STEP0,
        R_HIT_STEP1, R_DON_MASK, R_KA_MASK, R_COUNTER_LO, R_COUNTER_HI, R_CLOCK_POS_LO, R_CLOCK_POS_HI, R_STATUS,
        R_EVENT, R_EVENT_TIME, R_KEYS, R_VIDEO, R_BRIDGE_HI, R_DEBOUNCE, R_OVL_CTRL, R_OVL_ADDR, R_OVL_DATA,
-       R_OVL_CLIP };
+       R_OVL_CLIP, R_HIT_SLOT, R_HIT_LEN, R_HIT_STEP, R_HIT_BASE };
 enum { CTRL_STREAM = 1, CTRL_RUN = 2, CTRL_FINISHED = 4, CTRL_HIT_AUTO = 8 };
-enum { CMD_BEGIN = 1, CMD_DON = 2, CMD_KA = 4, CMD_LATCH = 8, CMD_CLEAR = 16 };
+enum { CMD_BEGIN = 1, CMD_DON = 2, CMD_KA = 4, CMD_LATCH = 8, CMD_CLEAR = 16, CMD_HIT2 = 32, CMD_HIT3 = 64 };
 
 static int failures, checks;
 #define CHECK(cond, ...)                                    \
@@ -252,13 +252,25 @@ struct Sim {
         return v;
     }
 
+    // slots 0 and 1 through the registers they have always had, 2 and 3 through the newer ones
     void load_hit(int slot, const int16_t* pcm, int n, uint32_t rate) {
-        wr(R_HIT_ADDR, slot << 14);
+        static const uint32_t base[4] = {0, 16384, 28672, 34816};
+        uint32_t step = (uint32_t)(((uint64_t)rate << 16) / 48000);
+        if (slot >= 2) {
+            wr(R_HIT_SLOT, slot);
+            wr(R_HIT_BASE, base[slot]);
+        }
+        wr(R_HIT_ADDR, base[slot]);
         for (int i = 0; i < n; i++) {
             wr(R_HIT_DATA, (uint16_t)pcm[i]);
         }
-        wr(slot ? R_HIT_LEN1 : R_HIT_LEN0, n);
-        wr(slot ? R_HIT_STEP1 : R_HIT_STEP0, (uint32_t)(((uint64_t)rate << 16) / 48000));
+        if (slot >= 2) {
+            wr(R_HIT_STEP, step);
+            wr(R_HIT_LEN, n);
+        } else {
+            wr(slot ? R_HIT_LEN1 : R_HIT_LEN0, n);
+            wr(slot ? R_HIT_STEP1 : R_HIT_STEP0, step);
+        }
     }
     void ring_write(uint32_t byte_offset, const uint8_t* data, uint32_t n) {
         for (uint32_t i = 0; i < n; i++) {
@@ -303,6 +315,10 @@ static void test_hits() {
     s.load_hit(1, ka, 200, 24000); // half rate: every stored sample plays twice
     sm_hit_load(PF_HIT_DON, don, 300, 48000);
     sm_hit_load(PF_HIT_KA, ka, 200, 24000);
+    // a third sound, started by the CPU only, at a third of the rate; the fourth slot stays empty
+    s.load_hit(2, don + 40, 180, 16000);
+    sm_hit_load(PF_HIT_BALLOON, don + 40, 180, 16000);
+    CHECK(s.rd(R_HIT_BASE) == 40960, "the hit sample memory reports %u samples", s.rd(R_HIT_BASE));
     s.wr(R_DON_MASK, 0x0030);
     s.wr(R_KA_MASK, 0x0300);
     s.wr(R_VOL_HITS, 256);
@@ -331,10 +347,11 @@ static void test_hits() {
     // a scripted sequence of triggers, mirrored in softmix
     struct Trig {
         int tick;
-        int kind; // 0 don key, 1 ka key, 2 don cpu, 3 ka cpu, 4 both keys at once
+        int kind; // 0 don key, 1 ka key, 2 don cpu, 3 ka cpu, 4 both keys at once, 5 third sound, 6 the empty slot
     };
     std::vector<Trig> script = {{10, 0}, {12, 1}, {13, 2}, {14, 3}, {15, 0}, {16, 0}, {17, 0}, {90, 4},
-                                {91, 2}, {300, 1}, {301, 1}, {302, 1}, {303, 1}, {304, 1}, {700, 0}};
+                                {91, 2}, {150, 5}, {152, 6}, {153, 0}, {154, 5}, {300, 1}, {301, 1}, {302, 1},
+                                {303, 1}, {304, 1}, {700, 0}, {702, 6}, {900, 4}, {900, 5}};
     size_t base = s.out.size();
     std::vector<int16_t> expect;
     size_t next = 0;
@@ -362,9 +379,16 @@ static void test_hits() {
             } else if (k == 3) {
                 s.wr(R_CMD, CMD_KA);
                 sm_hit_play(PF_HIT_KA);
-            } else {
-                s.top->keys_async |= 0x0120; // don wins when both arrive in the same cycle
+            } else if (k == 4) {
+                s.top->keys_async |= 0x0120; // both arrive in the same cycle and both sound, don first
                 sm_hit_play(PF_HIT_DON);
+                sm_hit_play(PF_HIT_KA);
+            } else if (k == 5) {
+                s.wr(R_CMD, CMD_HIT2);
+                sm_hit_play(PF_HIT_BALLOON);
+            } else {
+                s.wr(R_CMD, CMD_HIT3); // nothing is loaded there: no sound, and no voice is taken from one that plays
+                sm_hit_play(PF_HIT_KUSUDAMA);
             }
         }
         int16_t frame[2];
@@ -655,7 +679,7 @@ static void test_sprites() {
     }
     printf("  %d pixels changed by sprites, %d of them translucent\n", covered, mixed);
     CHECK(covered > 20000 && mixed > 3000, "the test picture has too few sprite pixels to mean anything");
-    CHECK((s.rd(R_OVL_CTRL) >> 24) == 3, "sprite layer version reads %u", s.rd(R_OVL_CTRL) >> 24);
+    CHECK((s.rd(R_OVL_CTRL) >> 24) == 4, "the block's version reads %u", s.rd(R_OVL_CTRL) >> 24);
 
     // 1b. the end of the sheet: a cell in its last pixels (beyond 16 address bits)
     {
@@ -690,6 +714,37 @@ static void test_sprites() {
         ovl_sprites(a.data(), (int)a.size());
         s.wr(R_OVL_CTRL, (uint32_t)a.size() << 8 | 1u);
         s.run_frames(2);
+    }
+
+    // 1c. the sheet beyond 16 address bits, written directly: address bit 16 is bit 20 of the register
+    {
+        const uint32_t at = 70000;
+        std::vector<uint8_t> patch(40);
+        for (auto& v : patch) {
+            v = (uint8_t)(1 + rnd() % 30);
+        }
+        ovl_sheet(at, patch.data(), (uint32_t)patch.size());
+        s.wr(R_OVL_ADDR, 0u << 16 | (at & 0xFFFF) | (at >> 16 & 1) << 20);
+        for (uint8_t v : patch) {
+            s.wr(R_OVL_DATA, v);
+        }
+        ovl_cell(ncells + 1, at, 8, 5, false, false);
+        s.wr(R_OVL_ADDR, 2u << 16 | (uint32_t)(ncells + 1));
+        s.wr(R_OVL_DATA, 5u << 23 | 8u << 16 | at >> 1);
+        std::vector<uint32_t> one = {(uint32_t)(ncells + 1) << 20 | 60u << 10 | 200u};
+        ovl_upload_list(s, 1, one);
+        ovl_sprites(one.data(), 1);
+        s.wr(R_OVL_CTRL, 1u << 8 | 3u);
+        // the list named is on screen from the start of the next frame, and the register says when
+        CHECK((s.rd(R_OVL_CTRL) >> 2 & 1) == 0, "the new sprite list is reported on screen before a frame began");
+        s.run_frames(3);
+        CHECK((s.rd(R_OVL_CTRL) >> 2 & 1) == 1, "the new sprite list is not reported on screen after three frames");
+        CHECK(ovl_mismatches(s, "high sheet address") == 0, "a cell written beyond sheet address 65535 differs from the model");
+        ovl_upload_list(s, 0, a);
+        ovl_sprites(a.data(), (int)a.size());
+        s.wr(R_OVL_CTRL, (uint32_t)a.size() << 8 | 1u);
+        s.run_frames(2);
+        CHECK((s.rd(R_OVL_CTRL) >> 2 & 1) == 0, "the first sprite list is not reported on screen again");
     }
 
     // 2. a new list in the other page takes effect at the next frame, not in the middle of this one

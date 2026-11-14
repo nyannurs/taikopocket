@@ -2,7 +2,8 @@
 // Wishbone port plus the audio, input and streaming logic behind it.
 // Register map: gateware/taiko/README.md and src/platform/pocket/taiko_regs.h.
 module taiko_top #(
-    parameter HIT_ADDR = 14
+    parameter HIT_AW = 16,         // address bits of the hit sample RAM
+    parameter HIT_DEPTH = 40960    // its samples: 16384 + 12288 + 6144 + 6144, the four slots' shares
 ) (
     input wire clk_sys,
     input wire rst,
@@ -43,7 +44,7 @@ module taiko_top #(
     output wire [15:0] out_r,
 
     input wire [15:0] keys_async,    // button word of the pad controller
-    input wire        vblank_async,  // high outside the active lines
+    input wire        vblank_async,  // the vertical sync of the picture
 
     output reg [15:0] bridge_offset_hi,  // bits 47:32 of data slot read offsets
     output reg        video_on = 0,      // 0: the core shows black (until the game has set up the picture)
@@ -81,10 +82,15 @@ module taiko_top #(
   reg [31:0] lead_in = 0, skip = 0, ring_base = 0, ring_bytes = 0, fed = 0;
   reg adpcm = 0, stereo = 0;
   reg [15:0] block_words = 0;
-  reg [HIT_ADDR:0] hit_wr_addr = 0, hit_len0 = 0, hit_len1 = 0;
-  reg [31:0] hit_step0 = 32'h10000, hit_step1 = 32'h10000;
+  // hit sounds: four slots, each a stretch of the sample RAM (slot 0 in the low bits)
+  reg [HIT_AW-1:0] hit_wr_addr = 0;
+  reg [4*HIT_AW-1:0] hit_base = {16'd34816, 16'd28672, 16'd16384, 16'd0};
+  reg [4*15-1:0] hit_len = 0;
+  reg [4*32-1:0] hit_step = {4{32'h10000}};
+  reg [1:0] hit_slot = 0;  // the slot TK_HIT_LEN / STEP / BASE write to
   reg [15:0] don_mask = 0, ka_mask = 0;
-  reg cmd_begin = 0, cmd_don = 0, cmd_ka = 0;
+  reg cmd_begin = 0;
+  reg [3:0] cmd_hit = 0;
   reg hit_wr = 0;
   reg [15:0] hit_wr_data = 0;
   reg [47:0] latched_counter = 0, latched_pos = 0;
@@ -123,8 +129,7 @@ module taiko_top #(
   always @(posedge clk_sys) begin
     wbs_ack   <= 0;
     cmd_begin <= 0;
-    cmd_don   <= 0;
-    cmd_ka    <= 0;
+    cmd_hit   <= 0;
     hit_wr    <= 0;
     ev_pop    <= 0;
     if (hit_wr) hit_wr_addr <= hit_wr_addr + 1'b1;
@@ -141,8 +146,7 @@ module taiko_top #(
           6'h01: {video_on, hit_auto, finished, run, stream_enable} <= wbs_dat_w[4:0];
           6'h02: begin
             cmd_begin <= wbs_dat_w[0];
-            cmd_don   <= wbs_dat_w[1];
-            cmd_ka    <= wbs_dat_w[2];
+            cmd_hit   <= {wbs_dat_w[6:5], wbs_dat_w[2:1]};
             if (wbs_dat_w[3]) begin
               latched_counter <= snap[47:0];
               latched_pos     <= snap[95:48];
@@ -164,18 +168,25 @@ module taiko_top #(
             stereo      <= wbs_dat_w[1];
             block_words <= wbs_dat_w[31:16];
           end
-          6'h0F: hit_wr_addr <= wbs_dat_w[HIT_ADDR:0];
+          6'h0F: hit_wr_addr <= wbs_dat_w[HIT_AW-1:0];
           6'h10: begin
             hit_wr      <= 1;
             hit_wr_data <= wbs_dat_w[15:0];
           end
-          6'h11: hit_len0 <= wbs_dat_w[HIT_ADDR:0];
-          6'h12: hit_len1 <= wbs_dat_w[HIT_ADDR:0];
-          6'h13: hit_step0 <= wbs_dat_w;
-          6'h14: hit_step1 <= wbs_dat_w;
+          // slots 0 and 1 as before this register block had four
+          6'h11: hit_len[0+:15] <= wbs_dat_w[14:0];
+          6'h12: hit_len[15+:15] <= wbs_dat_w[14:0];
+          6'h13: hit_step[0+:32] <= wbs_dat_w;
+          6'h14: hit_step[32+:32] <= wbs_dat_w;
+          // any slot: choose it, then its length, rate and place in the RAM
+          6'h26: hit_slot <= wbs_dat_w[1:0];
+          6'h27: hit_len[hit_slot*15+:15] <= wbs_dat_w[14:0];
+          6'h28: hit_step[hit_slot*32+:32] <= wbs_dat_w;
+          6'h29: hit_base[hit_slot*HIT_AW+:HIT_AW] <= wbs_dat_w[HIT_AW-1:0];
           6'h21: debounce <= wbs_dat_w[11:0];
           6'h22: {ovl_count, ovl_page, ovl_enable} <= {wbs_dat_w[15:8], wbs_dat_w[1:0]};
-          6'h23: {ovl_target, ovl_addr} <= {wbs_dat_w[17:16], 1'b0, wbs_dat_w[15:0]};
+          // bit 20 is address bit 16 (the sheet has more than 65536 pixels)
+          6'h23: {ovl_target, ovl_addr} <= {wbs_dat_w[17:16], wbs_dat_w[20], wbs_dat_w[15:0]};
           6'h24: begin
             ovl_wr   <= 1;
             ovl_data <= wbs_dat_w;
@@ -191,9 +202,13 @@ module taiko_top #(
           6'h00: wbs_dat_r <= ID;
           6'h01: wbs_dat_r <= {27'd0, video_on, hit_auto, finished, run, stream_enable};
           6'h21: wbs_dat_r <= {20'd0, debounce};
-          // 31:24: version of the sprite layer (2: pixel doubling, cell addresses in 2 px, 73728 px sheet;
-          //        3: sheet value 31 ends a row, pixels that are drawn already are skipped)
-          6'h22: wbs_dat_r <= {8'd3, 8'd0, ovl_count, 6'd0, ovl_page, ovl_enable};
+          // 31:24: version of this block (2: pixel doubling, cell addresses in 2 px, 73728 px sheet;
+          //        3: sheet value 31 ends a row, pixels that are drawn already are skipped;
+          //        4: four hit sound slots, bit 2 here, address bit 16 in TK_OVL_ADDR)
+          // bit 2: the sprite list being drawn from (bit 1 once the frame after the write has begun)
+          6'h22: wbs_dat_r <= {8'd4, 8'd0, ovl_count, 5'd0, ovl_page_shown, ovl_page, ovl_enable};
+          6'h26: wbs_dat_r <= {30'd0, hit_slot};
+          6'h29: wbs_dat_r <= HIT_DEPTH;
           6'h03: wbs_dat_r <= {16'd0, gain};
           6'h04: wbs_dat_r <= {16'd0, vol_music};
           6'h05: wbs_dat_r <= {16'd0, vol_hits};
@@ -225,6 +240,7 @@ module taiko_top #(
   end
 
   // ---- sprite layer ------------------------------------------------------------------------
+  wire ovl_page_shown;
   taiko_sprites sprite_layer (
       .clk_sys   (clk_sys),
       .mem_wr    (ovl_wr),
@@ -234,6 +250,7 @@ module taiko_top #(
       .enable    (ovl_enable),
       .page      (ovl_page),
       .count     (ovl_count),
+      .page_shown(ovl_page_shown),
       .clip_x0   (ovl_clip_x0),
       .clip_x1   (ovl_clip_x1),
       .clk_vid   (clk_vid),
@@ -249,7 +266,7 @@ module taiko_top #(
 
   // ---- streamer ----------------------------------------------------------------------------
   wire [31:0] stream_data;
-  wire stream_wrreq;
+  wire stream_wrreq, stream_drained;
   taiko_stream stream (
       .clk        (clk_sys),
       .rst        (rst),
@@ -263,6 +280,7 @@ module taiko_top #(
       .block_words(block_words),
       .skip       (skip),
       .consumed   (consumed),
+      .drained    (stream_drained),
       .wb_adr     (wbm_adr),
       .wb_cyc     (wbm_cyc),
       .wb_stb     (wbm_stb),
@@ -276,26 +294,55 @@ module taiko_top #(
   assign fifo_wrreq   = stream_enable ? stream_wrreq : cpu_audio_wr;
 
   // ---- into the audio domain ---------------------------------------------------------------
-  wire a_run, a_finished, a_hit_auto, a_load, a_trig_don, a_trig_ka;
+  wire a_run, a_finished_now, a_hit_auto, a_load;
+  wire [3:0] a_trig;
   // without the streamer the SoC's playback_en starts and stops the music, and an
-  // empty FIFO is just silence (the stock behaviour)
+  // empty FIFO is just silence (the stock behaviour). With it, an empty FIFO is the end
+  // of the song only when the game has said so AND the streamer has passed on all it
+  // was given: until then the FIFO is merely waiting for the next word.
+  reg fin_sys = 0;
+  always @(posedge clk_sys) fin_sys <= stream_enable ? (finished && stream_drained) : 1'b1;
   taiko_cdc_bit #(.WIDTH(3)) ctrl_to_audio (
       .clk(clk_audio),
-      .d  ({hit_auto, stream_enable ? finished : 1'b1, stream_enable ? run : cpu_playback_en}),
-      .q  ({a_hit_auto, a_finished, a_run})
+      .d  ({hit_auto, fin_sys, stream_enable ? run : cpu_playback_en}),
+      .q  ({a_hit_auto, a_finished_now, a_run})
   );
+  // ... and has been so for two sample periods, by which time the FIFO's empty flag on
+  // this side has caught up with the last word written on the other
+  reg [1:0] a_fin_hold = 0;
+  always @(posedge clk_audio) begin
+    if (!a_finished_now) a_fin_hold <= 0;
+    else if (tick) a_fin_hold <= {a_fin_hold[0], 1'b1};
+  end
+  wire a_finished = a_finished_now && a_fin_hold[1];
   taiko_cdc_pulse begin_to_audio (.clk_a(clk_sys), .pulse_a(cmd_begin), .clk_b(clk_audio), .pulse_b(a_load));
-  taiko_cdc_pulse don_to_audio (.clk_a(clk_sys), .pulse_a(cmd_don), .clk_b(clk_audio), .pulse_b(a_trig_don));
-  taiko_cdc_pulse ka_to_audio (.clk_a(clk_sys), .pulse_a(cmd_ka), .clk_b(clk_audio), .pulse_b(a_trig_ka));
+  genvar h;
+  generate
+    for (h = 0; h < 4; h = h + 1) begin : hit_trigger
+      taiko_cdc_pulse to_audio (.clk_a(clk_sys), .pulse_a(cmd_hit[h]), .clk_b(clk_audio), .pulse_b(a_trig[h]));
+    end
+  endgenerate
+
+  // Settings the game may change while sound plays cross as whole words: each is taken
+  // over only when two samples of it agree, never half-changed.
+  wire [15:0] a_gain, a_vol_music, a_vol_hits, a_don_mask, a_ka_mask;
+  wire [11:0] a_debounce;
+  taiko_cdc_word #(.WIDTH(16)) gain_to_audio (.clk(clk_audio), .d(gain), .q(a_gain));
+  taiko_cdc_word #(.WIDTH(16)) volm_to_audio (.clk(clk_audio), .d(vol_music), .q(a_vol_music));
+  taiko_cdc_word #(.WIDTH(16)) volh_to_audio (.clk(clk_audio), .d(vol_hits), .q(a_vol_hits));
+  taiko_cdc_word #(.WIDTH(16)) donm_to_audio (.clk(clk_audio), .d(don_mask), .q(a_don_mask));
+  taiko_cdc_word #(.WIDTH(16)) kam_to_audio (.clk(clk_audio), .d(ka_mask), .q(a_ka_mask));
+  taiko_cdc_word #(.WIDTH(12)) deb_to_audio (.clk(clk_audio), .d(debounce), .q(a_debounce));
 
   wire [15:0] a_keys, a_keys_db;
   assign a_keys_db_w = a_keys_db;
   taiko_cdc_word #(.WIDTH(16)) keys_to_audio (.clk(clk_audio), .d(keys_async), .q(a_keys));
 
-  wire [HIT_ADDR:0] ram_addr;
+  wire [HIT_AW-1:0] ram_addr;
   wire [15:0] ram_q;
   taiko_ram #(
-      .ADDR(HIT_ADDR + 1)
+      .ADDR (HIT_AW),
+      .DEPTH(HIT_DEPTH)
   ) hit_ram (
       .wr_clk (clk_sys),
       .wr_en  (hit_wr),
@@ -313,10 +360,11 @@ module taiko_top #(
   wire ev_full_sys;
   taiko_cdc_bit ev_full_to_sys (.clk(clk_sys), .d(a_ev_full && a_ev_valid), .q(ev_full_sys));
 
-  // The configuration words below cross as they are: they only change while the
-  // CPU is setting something up, and `load` / the triggers arrive after them.
+  // start_pos, lead_in and the slots' base, length and rate cross as they are: they
+  // only change while the CPU is setting something up, and `load` / the triggers
+  // arrive after them.
   taiko_audio #(
-      .HIT_ADDR(HIT_ADDR)
+      .HIT_AW(HIT_AW)
   ) audio (
       .clk       (clk_audio),
       .tick      (tick),
@@ -328,27 +376,26 @@ module taiko_top #(
       .load      (a_load),
       .start_pos (start_pos),
       .lead_in   (lead_in),
-      .gain      (gain),
-      .vol_music (vol_music),
-      .vol_hits  (vol_hits),
+      .gain      (a_gain),
+      .vol_music (a_vol_music),
+      .vol_hits  (a_vol_hits),
       .hit_auto  (a_hit_auto),
-      .don_mask  (don_mask),
-      .ka_mask   (ka_mask),
-      .trig_don  (a_trig_don),
-      .trig_ka   (a_trig_ka),
-      .hit_len0  (hit_len0),
-      .hit_len1  (hit_len1),
-      .hit_step0 (hit_step0),
-      .hit_step1 (hit_step1),
+      .don_mask  (a_don_mask),
+      .ka_mask   (a_ka_mask),
+      .trig      (a_trig),
+      .hit_base  (hit_base),
+      .hit_len   (hit_len),
+      .hit_step  (hit_step),
       .keys      (a_keys),
-      .debounce  (debounce),
+      .debounce  (a_debounce),
       .keys_db   (a_keys_db),
       .ram_addr  (ram_addr),
       .ram_q     (ram_q),
       .out_l     (out_l),
       .out_r     (out_r),
       .counter   (a_counter),
-      .pos       (a_pos),
+      .pos       (),
+      .pos_tick  (a_pos),
       .starved   (a_starved),
       .ev_valid  (a_ev_valid),
       .ev_button (a_ev_button),

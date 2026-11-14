@@ -49,6 +49,7 @@ module taiko_sprites #(
     input wire        enable,
     input wire        page,
     input wire [ 7:0] count,       // sprites in list `page`
+    output wire       page_shown,  // the list being drawn from: `page`, taken over at the start of a frame
     input wire [ 9:0] clip_x0,     // cells with the clip bit are only drawn in [x0, x1)
     input wire [ 9:0] clip_x1,
 
@@ -150,6 +151,7 @@ module taiko_sprites #(
   reg cur_clip = 0, cur_double = 0, second = 0;
 
   assign sheet_addr = cur_addr;
+  assign page_shown = page_l;
   assign spr_addr  = {page_l, index[6:0]};
   assign cell_addr = spr_q[27:20];
 
@@ -331,7 +333,11 @@ module taiko_sprites #(
   wire [20:0] px = lb_q[sel_1];
   wire [4:0] alpha = de_1 ? px[20:16] : 5'd0;
   wire [4:0] keep = 5'd16 - (alpha > 5'd16 ? 5'd16 : alpha);
-  wire [7:0] sr = {px[15:11], px[15:13]}, sg = {px[10:5], px[10:9]}, sb = {px[4:0], px[4:2]};
+  // RGB565 to 8 bits per channel exactly as the picture is widened (rgb565_to_rgb888.sv)
+  wire [13:0] sr14 = {2'b0, px[15:11]} * 10'd527 + 14'd23;
+  wire [13:0] sg14 = {1'b0, px[10:5]} * 10'd259 + 14'd33;
+  wire [13:0] sb14 = {2'b0, px[4:0]} * 10'd527 + 14'd23;
+  wire [7:0] sr = sr14[13:6], sg = sg14[13:6], sb = sb14[13:6];
 
   function automatic [7:0] mix(input [7:0] sprite, input [7:0] picture, input [4:0] k);
     reg [12:0] scaled;

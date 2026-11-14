@@ -189,7 +189,8 @@ uint32_t ovl_mix888(uint32_t entry, uint32_t rgb) {
     }
     uint32_t keep = 16 - (alpha > 16 ? 16 : alpha);
     uint32_t c = entry & 0xFFFF;
-    uint32_t s[3] = {(c >> 11) << 3 | (c >> 13), ((c >> 5) & 63) << 2 | ((c >> 9) & 3), (c & 31) << 3 | ((c >> 2) & 7)};
+    /* RGB565 to 8 bits as the hardware does for sprites and picture alike */
+    uint32_t s[3] = {((c >> 11) * 527 + 23) >> 6, (((c >> 5) & 63) * 259 + 33) >> 6, ((c & 31) * 527 + 23) >> 6};
     uint32_t out = 0;
     for (int i = 0; i < 3; i++) {
         uint32_t p = (rgb >> (16 - 8 * i)) & 255;
@@ -210,8 +211,8 @@ void ovl_compose(uint16_t *frame) {
         for (int x = 0; x < OVL_W; x++) {
             if (line[x]) {
                 uint32_t c = row[x];
-                uint32_t rgb = ((c >> 11) << 3 | (c >> 13)) << 16 | (((c >> 5) & 63) << 2 | ((c >> 9) & 3)) << 8 |
-                               ((c & 31) << 3 | ((c >> 2) & 7));
+                uint32_t rgb = (((c >> 11) * 527 + 23) >> 6) << 16 | ((((c >> 5) & 63) * 259 + 33) >> 6) << 8 |
+                               (((c & 31) * 527 + 23) >> 6);
                 uint32_t m = ovl_mix888(line[x], rgb);
                 row[x] = (uint16_t)(((m >> 19) & 31) << 11 | ((m >> 10) & 63) << 5 | ((m >> 3) & 31));
             }

@@ -3,8 +3,12 @@
 //  - music: pops one stereo sample per 48 kHz tick from the music FIFO and keeps
 //    the exact song position (`pos`). It waits (position held) when the FIFO
 //    runs dry mid-song, and keeps counting in silence once the song is finished.
-//  - hit sounds: four voices playing don/ka samples from block RAM, started by
-//    button press edges (`hit_auto`) or by the CPU, with no CPU in the path.
+//  - hit sounds: four voices playing samples from block RAM. There are four sounds
+//    ("slots": don, ka and two the CPU alone starts, used for the balloon and the
+//    kusudama), each a stretch of the RAM with its own length and rate. Don and ka
+//    are started by button press edges (`hit_auto`) with no CPU in the path, any of
+//    them by the CPU. Requests are counted, not just noted: a don and a ka pressed
+//    in the same instant both sound.
 //  - mixer: music * gain * volume + hits * volume, saturated to 16 bits.
 //  - input: every button edge is reported with the value of the free-running
 //    sample counter, so the game can judge hits by when they happened.
@@ -15,7 +19,7 @@
 // Latency: a trigger seen up to COMPUTE_AT cycles into a sample period is in
 // the sample that is handed to the I2S serialiser at the next tick.
 module taiko_audio #(
-    parameter HIT_ADDR = 14,            // samples per hit sound = 2**HIT_ADDR
+    parameter HIT_AW = 16,              // address bits of the hit sample RAM
     parameter [7:0] COMPUTE_AT = 8'd200 // cycle of the 256-cycle period at which a sample is computed
 ) (
     input wire clk,
@@ -39,19 +43,18 @@ module taiko_audio #(
     input wire        hit_auto,   // buttons trigger hit sounds
     input wire [15:0] don_mask,
     input wire [15:0] ka_mask,
-    input wire        trig_don,   // CPU triggers (pulses)
-    input wire        trig_ka,
-    input wire [HIT_ADDR:0] hit_len0,   // samples in slot 0 (don) and 1 (ka)
-    input wire [HIT_ADDR:0] hit_len1,
-    input wire [31:0] hit_step0,  // 16.16 source samples per output sample
-    input wire [31:0] hit_step1,
+    input wire [ 3:0] trig,       // CPU triggers (pulses), one per slot
+    // per slot (0 don, 1 ka, 2, 3), slot 0 in the low bits
+    input wire [4*HIT_AW-1:0] hit_base,  // first sample in the RAM
+    input wire [4*15-1:0]     hit_len,   // samples, up to 16384
+    input wire [4*32-1:0]     hit_step,  // 16.16 source samples per output sample
 
     input wire [15:0] keys,      // button word, synchronised
     input wire [11:0] debounce,  // samples a button must stay up before its release counts
     output reg [15:0] keys_db = 0,  // the buttons as the game sees them
 
     // hit sample RAM (rd_data one cycle after rd_addr)
-    output reg  [HIT_ADDR:0] ram_addr = 0,
+    output reg  [HIT_AW-1:0] ram_addr = 0,
     input  wire [      15:0] ram_q,
 
     // to the I2S serialiser
@@ -61,6 +64,7 @@ module taiko_audio #(
     // status
     output reg [47:0] counter = 0,  // samples output since power-up
     output reg [47:0] pos = 0,
+    output reg [47:0] pos_tick = 0, // pos as it was at the tick: goes with `counter`
     output reg        starved = 0,
 
     // button edge events
@@ -89,7 +93,6 @@ module taiko_audio #(
   end
 
   reg [15:0] keys_prev = 0, pend_press = 0, pend_release = 0;
-  reg don_req = 0, ka_req = 0;
   wire [15:0] rising = keys_db & ~keys_prev;
   wire [15:0] falling = ~keys_db & keys_prev;
   wire [15:0] pend_any = pend_press | pend_release;
@@ -105,7 +108,7 @@ module taiko_audio #(
 
   // ---- voices ------------------------------------------------------------------------------
   reg        v_active[0:3];
-  reg        v_slot  [0:3];
+  reg [ 1:0] v_slot  [0:3];
   reg [31:0] v_phase [0:3];
   reg [ 1:0] next_voice = 0;
   integer k;
@@ -114,6 +117,17 @@ module taiko_audio #(
     v_slot[k]   = 0;
     v_phase[k]  = 0;
   end
+
+  // requests waiting for a voice, per slot (up to three; more at once are one too many to hear)
+  reg [1:0] req[0:3];
+  initial for (k = 0; k < 4; k = k + 1) req[k] = 0;
+  wire [3:0] req_new = trig | {2'b00, hit_auto && |(rising & ka_mask), hit_auto && |(rising & don_mask)};
+  wire [3:0] req_any = {req[3] != 0, req[2] != 0, req[1] != 0, req[0] != 0};
+  wire [1:0] req_slot = req_any[0] ? 2'd0 : req_any[1] ? 2'd1 : req_any[2] ? 2'd2 : 2'd3;  // don first
+
+  function automatic [14:0] len_of(input [1:0] s);
+    len_of = hit_len[s*15+:15];
+  endfunction
 
   // ---- per-sample computation ----------------------------------------------------------------
   reg [7:0] cycle = 0;  // cycles since the tick
@@ -125,10 +139,11 @@ module taiko_audio #(
   reg signed [15:0] next_l = 0, next_r = 0;
   reg [1:0] vi = 0;
 
-  wire [HIT_ADDR:0] cur_len = v_slot[vi] ? hit_len1 : hit_len0;
-  wire [31:0] cur_step = v_slot[vi] ? hit_step1 : hit_step0;
+  wire [14:0] cur_len = len_of(v_slot[vi]);
+  wire [31:0] cur_step = hit_step[v_slot[vi]*32+:32];
+  wire [HIT_AW-1:0] cur_base = hit_base[v_slot[vi]*HIT_AW+:HIT_AW];
   wire [15:0] cur_idx = v_phase[vi][31:16];
-  wire cur_plays = v_active[vi] && cur_idx < {{(15 - HIT_ADDR) {1'b0}}, cur_len};
+  wire cur_plays = v_active[vi] && cur_idx < {1'b0, cur_len};
 
   // music * gain >> 8, * volume >> 8; hits * volume >> 8 (arithmetic shifts, as in softmix.c)
   wire signed [33:0] gl = mus_l * $signed({1'b0, gain});
@@ -158,10 +173,6 @@ module taiko_audio #(
     keys_prev <= keys_db;
     pend_press <= pend_press | rising;
     pend_release <= pend_release | falling;
-    if (hit_auto && |(rising & don_mask)) don_req <= 1;
-    else if (hit_auto && |(rising & ka_mask)) ka_req <= 1;
-    if (trig_don) don_req <= 1;
-    if (trig_ka) ka_req <= 1;
     if (|pend_any) begin
       ev_valid   <= 1;
       ev_button  <= ev_index;
@@ -172,15 +183,21 @@ module taiko_audio #(
       else pend_release[ev_index] <= falling[ev_index];
     end
 
-    // start a voice (round robin: with all four busy the oldest restarts);
-    // not while the voices are being read out for this sample
-    if ((don_req || ka_req) && step == 4'd0) begin
+    // start a voice for one waiting request (round robin: with all four busy the oldest
+    // restarts); not while the voices are being read out for this sample. A request for
+    // a slot that holds no sound is dropped without taking a voice.
+    for (k = 0; k < 4; k = k + 1) begin
+      if (step == 4'd0 && req_any[k] && req_slot == k[1:0]) begin
+        if (!req_new[k]) req[k] <= req[k] - 2'd1;
+      end else if (req_new[k] && req[k] != 2'd3) begin
+        req[k] <= req[k] + 2'd1;
+      end
+    end
+    if (step == 4'd0 && |req_any && len_of(req_slot) != 15'd0) begin
       v_active[next_voice] <= 1;
-      v_slot[next_voice]   <= don_req ? 1'b0 : 1'b1;
+      v_slot[next_voice]   <= req_slot;
       v_phase[next_voice]  <= 0;
       next_voice           <= next_voice + 1'b1;
-      if (don_req) don_req <= trig_don || (hit_auto && |(rising & don_mask));
-      else ka_req <= trig_ka || (hit_auto && |(rising & ka_mask) && !(|(rising & don_mask)));
     end
 
     if (load) begin
@@ -193,9 +210,10 @@ module taiko_audio #(
     cycle <= cycle + 1'b1;
     if (tick) begin
       cycle   <= 0;
-      counter <= counter + 1'b1;
-      out_l   <= next_l;
-      out_r   <= next_r;
+      counter  <= counter + 1'b1;
+      pos_tick <= pos;
+      out_l    <= next_l;
+      out_r    <= next_r;
     end
 
     case (step)
@@ -233,7 +251,7 @@ module taiko_audio #(
       end
       // voices: address, wait, accumulate
       4'd3: begin
-        ram_addr <= {v_slot[vi], cur_idx[HIT_ADDR-1:0]};
+        ram_addr <= cur_base + cur_idx[HIT_AW-1:0];
         step     <= 4'd4;
       end
       4'd4: step <= 4'd5;

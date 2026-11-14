@@ -23,6 +23,7 @@ bool sm_music_starved(void);
 int64_t sm_music_pos(void);
 bool sm_music_advancing(void); /* position moves one per output sample right now */
 
+uint32_t sm_hit_room(int slot);
 void sm_hit_load(int slot, const int16_t *pcm, uint32_t samples, uint32_t rate);
 void sm_hit_play(int slot);
 void sm_volume(uint32_t music, uint32_t hits);

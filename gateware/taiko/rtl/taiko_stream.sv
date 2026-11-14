@@ -25,6 +25,7 @@ module taiko_stream (
     input wire [31:0] skip,         // decoded samples to drop before the first one is output
 
     output reg [31:0] consumed = 0, // bytes read from the ring
+    output wire       drained,      // everything fed so far has gone into the FIFO
 
     // Wishbone master (read only, classic cycles)
     output reg  [29:0] wb_adr = 0,
@@ -118,6 +119,7 @@ module taiko_stream (
   reg [2:0] after_push = S_IDLE;
 
   wire [31:0] available = fed - consumed;
+  assign drained = state == S_IDLE && available < 32'd4 && !fifo_wrreq;
   wire [31:0] ring_addr = ring_base + offset;
   wire [22:0] dec_l = ima(pred_l, idx_l, stereo ? word_l[nibble[2:0]*4+:4] : word[nibble[2:0]*4+:4]);
   wire [22:0] dec_r = ima(pred_r, idx_r, word[nibble[2:0]*4+:4]);

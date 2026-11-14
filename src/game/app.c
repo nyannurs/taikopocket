@@ -82,40 +82,47 @@ void ui_sound_ok(void) { pf_hit_play(PF_HIT_DON); }
  * its energy: a rim click); otherwise it is stored at half the rate, which keeps
  * twice the length (a drum's tail) for half the bandwidth. What still does not fit
  * is faded out. */
+/* A sound of the skin into the platform's hit sound memory. A slot has room for a
+ * fraction of a second at the full rate. A sound that is longer is kept at half, a
+ * third or a quarter of the rate, whichever is the first at which no more than half a
+ * percent of its energy lies beyond the room; what is cut off is faded out. */
 static void load_hit_sound(int slot, int sound) {
     static int16_t buf[PF_HIT_MAX_SAMPLES];
-    uint32_t n, rate;
+    uint32_t n, rate, room = pf_hit_room(slot);
     const int16_t *pcm = assets_sound(sound, &n, &rate);
-    if (!pcm) {
+    if (!pcm || !room) {
         return;
     }
+    room = room > PF_HIT_MAX_SAMPLES ? PF_HIT_MAX_SAMPLES : room;
     uint32_t step = 1;
-    if (n > PF_HIT_MAX_SAMPLES) {
-        uint64_t total = 0, tail = 0;
+    if (n > room) {
+        uint64_t total = 0;
         for (uint32_t i = 0; i < n; i++) {
-            uint64_t e = (uint64_t)((int32_t)pcm[i] * pcm[i]);
-            total += e;
-            if (i >= PF_HIT_MAX_SAMPLES) {
-                tail += e;
-            }
+            total += (uint64_t)((int32_t)pcm[i] * pcm[i]);
         }
-        if (tail * 200 > total) {
-            step = 2;
+        for (; step < 4; step++) {
+            uint64_t tail = 0;
+            for (uint32_t i = room * step; i < n; i++) {
+                tail += (uint64_t)((int32_t)pcm[i] * pcm[i]);
+            }
+            if (tail * 200 <= total) {
+                break;
+            }
         }
     }
     uint32_t out = n / step;
-    if (out > PF_HIT_MAX_SAMPLES) {
-        out = PF_HIT_MAX_SAMPLES;
+    if (out > room) {
+        out = room;
     }
     for (uint32_t i = 0; i < out; i++) {
-        int v = pcm[i * step];
-        if (step == 2) {
-            v = (v + pcm[i * 2 + 1]) / 2;
+        int v = 0;
+        for (uint32_t k = 0; k < step; k++) {
+            v += pcm[i * step + k];
         }
-        buf[i] = (int16_t)v;
+        buf[i] = (int16_t)(v / (int)step);
     }
     if (out < n / step) {
-        const uint32_t fade = 2048;
+        const uint32_t fade = out < 2048 ? out : 2048;
         for (uint32_t i = 0; i < fade; i++) {
             buf[out - 1 - i] = (int16_t)(buf[out - 1 - i] * (int)i / (int)fade);
         }
@@ -162,6 +169,8 @@ static void boot_update(void) {
         }
         load_hit_sound(PF_HIT_DON, SND_DON);
         load_hit_sound(PF_HIT_KA, SND_KA);
+        load_hit_sound(PF_HIT_BALLOON, SND_BALLOON);
+        load_hit_sound(PF_HIT_KUSUDAMA, SND_POTATO);
         settings_apply_audio();
         pf_hit_auto(false);
         pf_log("library: %u songs in %u categories", (unsigned)lib_song_count(), (unsigned)lib_category_count());

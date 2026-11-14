@@ -31,6 +31,7 @@
 #define FB_DMA_LENGTH REG32(CSR_BASE + 0x6004)
 #define FB_DMA_ENABLE REG32(CSR_BASE + 0x6008)
 #define FB_DMA_LOOP REG32(CSR_BASE + 0x6010)
+#define FB_DMA_OFFSET REG32(CSR_BASE + 0x6014) /* R: words read of the current pass over the buffer */
 #define VTG_ENABLE REG32(CSR_BASE + 0x6800)
 #define VTG_HRES REG32(CSR_BASE + 0x6804)
 #define VTG_HSYNC_START REG32(CSR_BASE + 0x6808)
@@ -61,7 +62,7 @@ enum {
     TK_FED = 0x0C,         /* RW  bytes written to the ring since TK_CMD_BEGIN */
     TK_CONSUMED = 0x0D,    /* R   bytes the streamer has read */
     TK_FORMAT = 0x0E,      /* W   bit 0 ADPCM, bit 1 stereo, 31:16 block size in words */
-    TK_HIT_ADDR = 0x0F,    /* W   write pointer into the hit sample memory (slot << 14) */
+    TK_HIT_ADDR = 0x0F,    /* W   write pointer into the hit sample memory */
     TK_HIT_DATA = 0x10,    /* W   one sample; the pointer advances */
     TK_HIT_LEN0 = 0x11,    /* W   samples in the don slot */
     TK_HIT_LEN1 = 0x12,    /* W   samples in the ka slot */
@@ -80,10 +81,16 @@ enum {
     TK_VIDEO = 0x1F,       /* R   bit 0 in vertical sync, 31:1 frame counter */
     TK_BRIDGE_OFFSET_HI = 0x20, /* RW bits 47:32 of the next data slot read offset */
     TK_OVL_CTRL = 0x22,    /* RW  sprite layer: bit 0 on, bit 1 which list to show from the next frame, 15:8 sprites in it */
-    TK_OVL_ADDR = 0x23,    /* W   17:16 memory (0 sheet, 1 palette, 2 cells, 3 sprite lists), 15:0 address */
+    TK_OVL_ADDR = 0x23,    /* W   17:16 memory (0 sheet, 1 palette, 2 cells, 3 sprite lists), 15:0 address,
+                              bit 20 address bit 16 (version 4) */
     TK_OVL_DATA = 0x24,    /* W   one entry at that address, which then moves on by one */
     TK_OVL_CLIP = 0x25,    /* W   25:16 and 9:0: clipped cells are drawn in [x0, x1) */
     TK_DEBOUNCE = 0x21,    /* RW  samples a button must stay up before its release counts (0..4095) */
+    /* version 4: four hit sounds, each a stretch of the sample memory */
+    TK_HIT_SLOT = 0x26,    /* RW  the slot (0..3) the next three registers write to */
+    TK_HIT_LEN = 0x27,     /* W   its samples (0: nothing to play) */
+    TK_HIT_STEP = 0x28,    /* W   its 16.16 playback rate */
+    TK_HIT_BASE = 0x29,    /* W   its first sample in the memory. Reads the memory's size in samples. */
 };
 #define TK_CTRL_STREAM 1u   /* music comes from the streamer, not from the CPU's audio FIFO writes */
 #define TK_CTRL_RUN 2u
@@ -95,6 +102,9 @@ enum {
 #define TK_CMD_KA 4u
 #define TK_CMD_LATCH 8u
 #define TK_CMD_CLEAR_OVERFLOW 16u
+#define TK_CMD_HIT2 32u /* version 4: start the sound in slot 2, 3 */
+#define TK_CMD_HIT3 64u
+#define TK_OVL_PAGE_SHOWN 4u /* TK_OVL_CTRL, version 4: the sprite list on screen */
 #define TK_STATUS_STARVED 1u
 #define TK_STATUS_EVENT 2u
 #define TK_STATUS_EVENT_OVERFLOW 4u

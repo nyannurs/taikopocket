@@ -196,6 +196,7 @@ uint64_t pf_music_consumed(void) {
     LOCKED(v = sm_music_consumed());
     return v;
 }
+uint32_t pf_hit_room(int slot) { return sm_hit_room(slot); }
 void pf_hit_load(int slot, const int16_t *pcm, uint32_t samples, uint32_t rate) {
     LOCKED(sm_hit_load(slot, pcm, samples, rate));
 }

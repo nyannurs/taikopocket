@@ -50,13 +50,15 @@ static uint32_t ovl_pending; /* what it should hold from the next frame on */
 /* Which sprite layer the bitstream has. One from before the layer ignores its registers
  * and reads them as 0: the game then draws the lane itself. The first layer (version 1)
  * has a 65536 pixel sheet and no pixel doubling; later ones have their version in the
- * top byte. */
+ * top byte. That number stands for the whole Taiko block of the bitstream: from 4 on
+ * it has four hit sounds and tells which sprite list is on screen. */
 static int ovl_version(void) {
     static int known = -1;
     if (known < 0) {
         TAIKO(TK_OVL_CTRL) = 0xA500; /* a count, layer off */
         uint32_t back = TAIKO(TK_OVL_CTRL);
-        known = (back & 0xFFFF) != 0xA500 ? 0 : (back >> 24) >= 2 ? (int)(back >> 24) : 1;
+        /* bit 2 reads the list on screen (version 4), which a warm reset does not clear */
+        known = (back & 0xFFFB) != 0xA500 ? 0 : (back >> 24) >= 2 ? (int)(back >> 24) : 1;
         TAIKO(TK_OVL_CTRL) = 0;
     }
     return known;
@@ -68,7 +70,9 @@ uint32_t pf_ovl_capacity(void) { return ovl_version() >= 2 ? PF_OVL_SHEET : 6553
 bool pf_ovl_doubling(void) { return ovl_version() >= 2; }
 
 void pf_ovl_sheet(uint32_t addr, const uint8_t *pixels, uint32_t count) {
-    TAIKO(TK_OVL_ADDR) = addr & 0xFFFF;
+    /* address bit 16 travels in bit 20; a block before version 4 has no such bit and
+     * can only be filled from the start, which is what the game does */
+    TAIKO(TK_OVL_ADDR) = (addr & 0xFFFF) | (addr >> 16 & 1) << 20;
     for (uint32_t i = 0; i < count; i++) {
         TAIKO(TK_OVL_DATA) = pixels[i];
     }
@@ -106,6 +110,13 @@ void pf_ovl_show(const uint32_t *sprites, int count) {
         count = PF_OVL_SPRITES;
     }
     uint32_t page = (ovl_ctrl >> 1 & 1) ^ 1;
+    if (ovl_version() >= 4 && (ovl_ctrl & 1)) {
+        /* The list named last is taken over when the next frame begins. Until then the
+         * other one, the one about to be written, is still being drawn from. (The frame
+         * buffer is switched before the frame ends, see present(), so this can be early.) */
+        for (uint32_t i = 0; i < 400000 && (TAIKO(TK_OVL_CTRL) >> 2 & 1) != (ovl_ctrl >> 1 & 1); i++) {
+        }
+    }
     TAIKO(TK_OVL_ADDR) = 3u << 16 | page * PF_OVL_SPRITES;
     for (int i = 0; i < count; i++) {
         TAIKO(TK_OVL_DATA) = sprites[i];
@@ -113,11 +124,32 @@ void pf_ovl_show(const uint32_t *sprites, int count) {
     ovl_pending = (uint32_t)count << 8 | page << 1 | 1;
 }
 
-/* show the buffer just drawn, at the next vertical sync */
+/* Shows the buffer just drawn, from the next frame on.
+ *
+ * The SoC reads the frame buffer through a FIFO of 16384 words, 82 lines ahead of the
+ * screen. At the vertical sync it has therefore read the top of the next frame already,
+ * from the old buffer: switching there left the top 82 lines one frame behind the rest.
+ * The switch belongs where the reader starts over, which is when its offset falls back
+ * to the beginning. (The few words it reads before the write lands are the first pixels
+ * of the top line, from the frame before.) The sprite list named here is taken over at
+ * the start of the same frame.
+ * A bitstream before version 4 cannot tell which sprite list is on screen, so there the
+ * switch stays at the vertical sync, where the next list is certainly free to write. */
 static void present(void) {
-    uint32_t frame = TAIKO(TK_VIDEO) >> 1;
-    /* a frame is 16.7 ms; without a picture signal the game goes on unsynchronised rather than stand still */
-    for (uint64_t t0 = pf_time_us(); (TAIKO(TK_VIDEO) >> 1) == frame && pf_time_us() - t0 < 100000;) {
+    if (ovl_version() >= 4) {
+        uint32_t last = FB_DMA_OFFSET;
+        for (uint32_t i = 0; i < 2000000; i++) { /* a frame is 16.7 ms; this gives up after some 100 ms */
+            uint32_t offset = FB_DMA_OFFSET;
+            if (offset < last) {
+                break;
+            }
+            last = offset;
+        }
+    } else {
+        uint32_t frame = TAIKO(TK_VIDEO) >> 1;
+        /* without a picture signal the game goes on unsynchronised rather than stand still */
+        for (uint64_t t0 = pf_time_us(); (TAIKO(TK_VIDEO) >> 1) == frame && pf_time_us() - t0 < 100000;) {
+        }
     }
     FB_DMA_BASE = fb_index ? MEM_FRAMEBUFFER1 : MEM_FRAMEBUFFER0;
     if (ovl_pending != ovl_ctrl) {
@@ -241,23 +273,54 @@ void pf_audio_clock(int64_t *counter, int64_t *music_pos) {
     }
 }
 
-void pf_hit_load(int slot, const int16_t *pcm, uint32_t samples, uint32_t rate) {
+/* Version 4 has a memory of 40960 samples that four sounds share; before, two sounds had
+ * 16384 each and there were no others. */
+static const uint32_t hit_base[PF_HIT_SLOTS] = {0, 16384, 28672, 34816};
+static const uint32_t hit_room[PF_HIT_SLOTS] = {16384, 12288, 6144, 6144};
+
+uint32_t pf_hit_room(int slot) {
     if (slot < 0 || slot >= PF_HIT_SLOTS) {
+        return 0;
+    }
+    return ovl_version() >= 4 ? hit_room[slot] : slot <= PF_HIT_KA ? 16384 : 0;
+}
+
+void pf_hit_load(int slot, const int16_t *pcm, uint32_t samples, uint32_t rate) {
+    uint32_t room = pf_hit_room(slot);
+    if (!room) {
         return;
     }
-    if (samples > PF_HIT_MAX_SAMPLES) {
-        samples = PF_HIT_MAX_SAMPLES;
+    if (samples > room) {
+        samples = room;
+    }
+    uint32_t step = (uint32_t)(((uint64_t)rate << 16) / PF_SAMPLE_RATE);
+    if (ovl_version() >= 4) {
+        TAIKO(TK_HIT_SLOT) = (uint32_t)slot;
+        TAIKO(TK_HIT_LEN) = 0; /* silent while it is being written */
+        TAIKO(TK_HIT_BASE) = hit_base[slot];
+        TAIKO(TK_HIT_ADDR) = hit_base[slot];
+        for (uint32_t i = 0; i < samples; i++) {
+            TAIKO(TK_HIT_DATA) = (uint16_t)pcm[i];
+        }
+        TAIKO(TK_HIT_STEP) = step;
+        TAIKO(TK_HIT_LEN) = samples;
+        return;
     }
     TAIKO(slot ? TK_HIT_LEN1 : TK_HIT_LEN0) = 0;
     TAIKO(TK_HIT_ADDR) = (uint32_t)slot << 14;
     for (uint32_t i = 0; i < samples; i++) {
         TAIKO(TK_HIT_DATA) = (uint16_t)pcm[i];
     }
-    TAIKO(slot ? TK_HIT_STEP1 : TK_HIT_STEP0) = (uint32_t)(((uint64_t)rate << 16) / PF_SAMPLE_RATE);
+    TAIKO(slot ? TK_HIT_STEP1 : TK_HIT_STEP0) = step;
     TAIKO(slot ? TK_HIT_LEN1 : TK_HIT_LEN0) = samples;
 }
 
-void pf_hit_play(int slot) { TAIKO(TK_CMD) = slot == PF_HIT_KA ? TK_CMD_KA : TK_CMD_DON; }
+void pf_hit_play(int slot) {
+    static const uint32_t cmd[PF_HIT_SLOTS] = {TK_CMD_DON, TK_CMD_KA, TK_CMD_HIT2, TK_CMD_HIT3};
+    if (slot >= 0 && slot < PF_HIT_SLOTS && pf_hit_room(slot)) {
+        TAIKO(TK_CMD) = cmd[slot];
+    }
+}
 
 void pf_hit_map(uint32_t don_buttons, uint32_t ka_buttons) {
     TAIKO(TK_DON_MASK) = don_buttons & 0xFFFF;
@@ -439,6 +502,13 @@ const char *pf_option(const char *name) {
 }
 
 int main(void) {
+    if (TAIKO(TK_ID) != TK_ID_VALUE) {
+        pf_log("this bitstream has no Taiko block: the game cannot run on it");
+    }
+    /* button edges from before a reset are still in the hardware's queue */
+    for (int i = 0; i < 128 && (TAIKO(TK_EVENT) & 0x80000000u); i++) {
+        (void)TAIKO(TK_EVENT_TIME);
+    }
     video_init();
     app_init();
     for (;;) {

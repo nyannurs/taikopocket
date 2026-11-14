@@ -97,10 +97,14 @@ uint64_t pf_music_consumed(void); /* ring bytes the streamer is done with */
 void pf_audio_clock(int64_t *counter, int64_t *music_pos);
 
 /* Hit sounds: short mono samples kept by the platform (block RAM on the Pocket),
- * mixed after the music with their own volume. */
-enum { PF_HIT_DON = 0, PF_HIT_KA = 1, PF_HIT_SLOTS = 2 };
-#define PF_HIT_MAX_SAMPLES 16384
+ * mixed after the music with their own volume. Four of them: don and ka, which the
+ * hardware starts by itself on a button press, and the sounds of a balloon and of a
+ * kusudama bursting, which only the game starts. Each has its share of the memory:
+ * pf_hit_room() samples (0: this platform cannot hold that sound). */
+enum { PF_HIT_DON = 0, PF_HIT_KA = 1, PF_HIT_BALLOON = 2, PF_HIT_KUSUDAMA = 3, PF_HIT_SLOTS = 4 };
+#define PF_HIT_MAX_SAMPLES 16384 /* the largest share */
 
+uint32_t pf_hit_room(int slot);
 void pf_hit_load(int slot, const int16_t *pcm, uint32_t samples, uint32_t rate);
 void pf_hit_play(int slot);                                 /* CPU trigger */
 void pf_hit_map(uint32_t don_buttons, uint32_t ka_buttons); /* hardware trigger map */

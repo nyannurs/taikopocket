@@ -154,6 +154,7 @@ void pf_audio_clock(int64_t *counter, int64_t *music_pos) {
         *music_pos = sm_music_pos();
     }
 }
+uint32_t pf_hit_room(int slot) { return sm_hit_room(slot); }
 void pf_hit_load(int slot, const int16_t *pcm, uint32_t samples, uint32_t rate) { sm_hit_load(slot, pcm, samples, rate); }
 void pf_hit_play(int slot) { sm_hit_play(slot); }
 void pf_hit_map(uint32_t don_buttons, uint32_t ka_buttons) {
