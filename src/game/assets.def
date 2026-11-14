@@ -1,0 +1,70 @@
+/* Asset ids shared by the game (C, via X-macros) and the packer (Python, which
+ * reads this file). The id of an entry is its position in its list, so only
+ * ever append; reordering changes the library format. */
+
+/* Sprites. Missing ones are stored with zero frames and the game falls back. */
+SPRITE(NOTES)           /* 15: judge circle, don, ka, DON, KA, roll head/body/tail, big roll head/body/tail, balloon head, balloon, kusudama head, kusudama */
+SPRITE(SENOTES)         /* 12 note names under the lane */
+SPRITE(MTAIKO)          /* the drum */
+SPRITE(MTAIKO_RED)      /* 2: don flash left, right */
+SPRITE(MTAIKO_BLUE)     /* 2: ka flash left, right */
+SPRITE(JUDGE)           /* 3: good, ok, bad */
+SPRITE(SOUL)            /* 1 idle + animation frames */
+SPRITE(EXPLOSION)       /* 2: good, ok (or 4 rows of animation frames) */
+SPRITE(EXPLOSION_LOWER)
+SPRITE(FIRE)            /* go-go flame frames */
+SPRITE(NUM_S)           /* 10 small digits */
+SPRITE(NUM_M)           /* 11: digits and '+' */
+SPRITE(NUM_COMBO)       /* 10 */
+SPRITE(NUM_COMBO_L)     /* 10, combo of 100 and more */
+SPRITE(NUM_ROLL)        /* 10 */
+SPRITE(NUM_BALLOON)     /* 10 */
+SPRITE(NUM_POTATO)      /* 10 */
+SPRITE(ROLL_BALLOON)
+SPRITE(BURST_BALLOON)
+SPRITE(POTATO_BALLOON)
+SPRITE(COMBO_BALLOON)
+SPRITE(BRANCH_BALLOON)  /* 2: level up, level down */
+SPRITE(CLEARMARK)       /* 5: not played, failed, clear, hard clear, full combo */
+SPRITE(MARK_FULLCOMBO)
+SPRITE(MARK_NEWRECORD)
+SPRITE(RESULT_GAUGE)    /* 16 px units, 2 rows */
+SPRITE(RESULT_MSG)      /* 2: cleared, failed */
+SPRITE(RESULT_BOARD)
+SPRITE(GAUGE)           /* 16 px units: 4 rows x (animation frames x 6 units) */
+SPRITE(HR_SENOTES)
+SPRITE(HR_SONGTITLE)
+SPRITE(LAYER_NORMAL)
+SPRITE(LAYER_EXPERT)
+SPRITE(LAYER_MASTER)
+SPRITE(FLASH_HIT)
+SPRITE(FLASH_RED)
+SPRITE(FLASH_BLUE)
+SPRITE(FLASH_YELLOW)
+SPRITE(LANE_BG)
+SPRITE(LANE_BG_GOGO)
+SPRITE(COURSE_SYMBOL)   /* 8: easy, normal, hard, oni x (idle, lit) */
+SPRITE(GOGO_SPLASH)
+SPRITE(BG)
+SPRITE(BG_CLEAR)
+SPRITE(BG_HOT)
+SPRITE(BG_MISS)
+SPRITE(SONGSELECT_BG)
+SPRITE(RESULT_BG_CLEAR)
+SPRITE(RESULT_BG_FAIL)
+
+/* Sounds: mono 16-bit. */
+SOUND(DON)
+SOUND(KA)
+SOUND(BALLOON)
+SOUND(POTATO)
+
+/* Skin settings (imgdet.ini), integers. */
+CFG(SOUL_INTERVAL_MS)
+CFG(FIRE_INTERVAL_MS)
+CFG(GAUGE_INTERVAL_MS)
+CFG(GAUGE_FRAMES)
+CFG(EXPLOSION_INTERVAL_MS)
+CFG(EXPLOSION_FRAMES)
+CFG(GOGOSPLASH_INTERVAL_MS)
+CFG(BARLINE_COLOR)      /* RGB565 */

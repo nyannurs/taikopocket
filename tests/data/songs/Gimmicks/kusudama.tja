@@ -1,0 +1,28 @@
+TITLE:Kusudama and Friends
+TITLEJA:くす玉となかまたち
+SUBTITLE:--balloons, big notes, lyrics
+SUBTITLEJA:--風船と歌詞
+BPM:128
+WAVE:kusu.ogg
+OFFSET:-0.8
+GENRE:Test
+COURSE:Oni
+LEVEL:7
+BALLOON:20.30,7
+#START
+#LYRIC first line
+9000000000000000,
+9000000000000008,
+#LYRIC 二行目のうた
+A000B000A0B0A0B0,
+1F1C2D2G,
+7000,
+0080,
+9999999999999998,
+1x2y, // odd characters are blank notes
+#LYRIC
+70
+// a comment between the halves of a bar
+08,
+1,
+#END

@@ -1,0 +1,52 @@
+{
+  "input": {
+    "magic": "APF_VER_1",
+    "controllers": [
+      {
+        "type": "default",
+        "mappings": [
+          {
+            "id": 0,
+            "name": "Ka / confirm",
+            "key": "pad_btn_a"
+          },
+          {
+            "id": 1,
+            "name": "Don / back",
+            "key": "pad_btn_b"
+          },
+          {
+            "id": 2,
+            "name": "Ka / random",
+            "key": "pad_btn_x"
+          },
+          {
+            "id": 3,
+            "name": "Don",
+            "key": "pad_btn_y"
+          },
+          {
+            "id": 10,
+            "name": "Ka",
+            "key": "pad_trig_l"
+          },
+          {
+            "id": 11,
+            "name": "Ka",
+            "key": "pad_trig_r"
+          },
+          {
+            "id": 20,
+            "name": "Pause",
+            "key": "pad_btn_start"
+          },
+          {
+            "id": 21,
+            "name": "Settings",
+            "key": "pad_btn_select"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taiko Pocket</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0c0c14; color: #dcdce6; font: 15px/1.5 system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; }
+  h1 { font-size: 20px; margin: 18px 0 4px; }
+  #panel { max-width: 640px; padding: 0 16px 12px; text-align: center; }
+  #panel p { margin: 6px 0; color: #a8a8b8; }
+  button, input[type=file] { font: inherit; margin: 6px; }
+  button { padding: 6px 16px; }
+  canvas { width: min(96vw, 111vh, 1200px) !important; height: auto !important; aspect-ratio: 10 / 9;
+           image-rendering: pixelated; background: #000; display: none; outline: none; margin-top: 8px; }
+  kbd { background: #26263a; border-radius: 4px; padding: 1px 6px; }
+  #status { color: #ffc850; min-height: 1.5em; }
+</style>
+</head>
+<body>
+<h1>Taiko Pocket</h1>
+<div id="panel">
+  <p>Choose the library file made by the packer (<code>.tpl</code>; add <code>.tp1</code>, <code>.tp2</code> … if it is split).
+     It is read in place, nothing is uploaded.</p>
+  <input type="file" id="files" multiple accept=".tpl,.tp1,.tp2,.tp3,.tp4,.tp5,.tp6,.tp7,.tp8,.tp9">
+  <button id="start" disabled>Start</button>
+  <p id="status"></p>
+  <p><kbd>F</kbd> <kbd>J</kbd> don &nbsp; <kbd>D</kbd> <kbd>K</kbd> ka &nbsp; arrows move &nbsp;
+     <kbd>X</kbd> choose &nbsp; <kbd>Z</kbd> back &nbsp; <kbd>Enter</kbd> pause &nbsp; <kbd>Tab</kbd> settings</p>
+  <p>Browser audio is delayed by 20 to 100 ms. Set the audio offset in the settings, or use it for
+     checking charts rather than for score attempts.</p>
+</div>
+<canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+<script>
+  var statusEl = document.getElementById('status');
+  var canvas = document.getElementById('canvas');
+  var Module = {
+    canvas: canvas,
+    noInitialRun: true,
+    tpFiles: [],
+    print: function (t) { console.log(t); },
+    printErr: function (t) { console.log(t); },
+    onRuntimeInitialized: function () { Module.tpReady = true; maybeAutoStart(); }
+  };
+  var params = new URLSearchParams(location.search);
+
+  // volume number from the file name: .tpl is 0, .tp1 is 1, ...
+  function volumeOf(name) { var c = name.slice(-1); return c === 'l' ? 0 : parseInt(c, 10) || 0; }
+
+  function start() {
+    if (!Module.tpReady || !Module.tpFiles[0] || Module.tpStarted) return;
+    Module.tpStarted = true;
+    document.getElementById('panel').style.display = 'none';
+    canvas.style.display = 'block';
+    canvas.focus();
+    var args = ['library.tpl'];
+    ['autoplay', 'speed'].forEach(function (k) {
+      if (params.has(k)) args.push('--set', k + '=' + params.get(k));
+    });
+    Module.callMain(args);
+  }
+
+  document.getElementById('files').addEventListener('change', function (e) {
+    Module.tpFiles = [];
+    for (var i = 0; i < e.target.files.length; i++) Module.tpFiles[volumeOf(e.target.files[i].name)] = e.target.files[i];
+    document.getElementById('start').disabled = !Module.tpFiles[0];
+    statusEl.textContent = Module.tpFiles[0] ? '' : 'Select the .tpl file (volume 0) too.';
+  });
+  document.getElementById('start').addEventListener('click', start);
+
+  // ?lib=NAME loads a library that sits next to this page (handy for small test libraries)
+  function maybeAutoStart() {
+    if (!params.has('lib') || Module.tpFetching) return;
+    Module.tpFetching = true;
+    statusEl.textContent = 'Fetching ' + params.get('lib') + ' …';
+    fetch(params.get('lib')).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.blob();
+    }).then(function (blob) {
+      Module.tpFiles = [blob];
+      statusEl.textContent = 'Press any key or click to start.';
+      var go = function () { removeEventListener('keydown', go); removeEventListener('pointerdown', go); start(); };
+      addEventListener('keydown', go);
+      addEventListener('pointerdown', go);
+      if (params.has('now')) start(); // audio may stay silent until the first key press
+    }).catch(function (e) { statusEl.textContent = 'Could not fetch the library: ' + e.message; });
+  }
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

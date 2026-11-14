@@ -1,0 +1,15 @@
+// The way many Taikojiro charts are written: no COURSE: line, headers in any
+// order, no #END. YataiDON finds no chart here; Taiko Pocket plays it as Oni.
+TITLE:Taikojiro Habits
+LEVEL:7
+BPM:145
+WAVE:habits.ogg
+OFFSET:-1.2
+BALLOON:6
+SIDE:1
+GAME:Taiko
+#START
+1010201020102010,
+7000000000000008,
+#BMSCROOL
+1,

@@ -1,0 +1,28 @@
+name: ci
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  desktop:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev ffmpeg python3-pil
+      - name: Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install sdl2 ffmpeg && python3 -m pip install --break-system-packages pillow
+      - name: Reference code for the golden tests
+        run: tools/fetch_third_party.sh
+      - name: Build
+        run: make
+      - name: Tests
+        run: make test
+      - name: Golden tests against YataiDON
+        run: make golden

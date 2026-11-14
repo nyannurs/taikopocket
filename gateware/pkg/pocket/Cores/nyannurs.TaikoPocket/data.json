@@ -1,0 +1,127 @@
+{
+  "data": {
+    "magic": "APF_VER_1",
+    "data_slots": [
+      {
+        "name": "Program",
+        "id": 0,
+        "required": true,
+        "filename": "taikopocket.bin",
+        "parameters": "0x49",
+        "deferload": true,
+        "extensions": [
+          "bin"
+        ],
+        "address": "0x00000000"
+      },
+      {
+        "name": "Library",
+        "id": 1,
+        "required": true,
+        "filename": "library.tpl",
+        "parameters": "0x08",
+        "deferload": true,
+        "extensions": [
+          "tpl"
+        ],
+        "address": "0x00000000"
+      },
+      {
+        "name": "Library 2",
+        "id": 2,
+        "required": false,
+        "filename": "library.tp1",
+        "parameters": "0x08",
+        "deferload": true,
+        "extensions": [
+          "tp1"
+        ],
+        "address": "0x00000000"
+      },
+      {
+        "name": "Library 3",
+        "id": 3,
+        "required": false,
+        "filename": "library.tp2",
+        "parameters": "0x08",
+        "deferload": true,
+        "extensions": [
+          "tp2"
+        ],
+        "address": "0x00000000"
+      },
+      {
+        "name": "Library 4",
+        "id": 4,
+        "required": false,
+        "filename": "library.tp3",
+        "parameters": "0x08",
+        "deferload": true,
+        "extensions": [
+          "tp3"
+        ],
+        "address": "0x00000000"
+      },
+      {
+        "name": "Library 5",
+        "id": 5,
+        "required": false,
+        "filename": "library.tp4",
+        "parameters": "0x08",
+        "deferload": true,
+        "extensions": [
+          "tp4"
+        ],
+        "address": "0x00000000"
+      },
+      {
+        "name": "Library 6",
+        "id": 6,
+        "required": false,
+        "filename": "library.tp5",
+        "parameters": "0x08",
+        "deferload": true,
+        "extensions": [
+          "tp5"
+        ],
+        "address": "0x00000000"
+      },
+      {
+        "name": "Library 7",
+        "id": 7,
+        "required": false,
+        "filename": "library.tp6",
+        "parameters": "0x08",
+        "deferload": true,
+        "extensions": [
+          "tp6"
+        ],
+        "address": "0x00000000"
+      },
+      {
+        "name": "Library 8",
+        "id": 8,
+        "required": false,
+        "filename": "library.tp7",
+        "parameters": "0x08",
+        "deferload": true,
+        "extensions": [
+          "tp7"
+        ],
+        "address": "0x00000000"
+      },
+      {
+        "name": "Save",
+        "id": 9,
+        "required": false,
+        "filename": "taikopocket.sav",
+        "parameters": "0x00",
+        "deferload": true,
+        "extensions": [
+          "sav"
+        ],
+        "address": "0x00000000"
+      }
+    ]
+  }
+}

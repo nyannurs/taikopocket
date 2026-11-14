@@ -1,0 +1,26 @@
+# Generated files: build outputs, caches, packed libraries
+/build/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# Downloaded reference code and fonts (see third_party/README.md)
+/third_party/*
+!/third_party/README.md
+
+# Your own Taikojiro install: charts, audio and skin are never committed
+/taikojiro_reference/
+
+# Your own song library: never committed
+/taikopocket_library/
+
+# Packed libraries, their audio caches and saves, wherever they are written
+*.tpl
+*.tp[1-9]
+*.tpl.cache/
+*.sav
+
+# Local working notes and the project brief: not for the repository
+/NOTES.private.md
+/taiko-pocket-prompt.md

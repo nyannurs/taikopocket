@@ -1,0 +1,137 @@
+name: pocket
+# Builds everything that goes on the SD card: the firmware (RISC-V), the FPGA
+# bitstream (Quartus, in a container) and the release zip in openFPGA layout.
+# The bitstream takes a quarter of an hour, so it is only compiled when the
+# hardware description changed; otherwise the release reuses the last one built.
+on:
+  push:
+    branches: ['**']  # not for tags: a release tag would compile the bitstream again
+    paths:
+      - 'gateware/**'
+      - 'src/**'
+      - 'tools/make_release.py'
+      - 'Makefile'
+      - '.github/workflows/pocket.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      gateware: ${{ steps.diff.outputs.gateware }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          # everything under gateware/ except the core definition files and docs
+          pattern='^gateware/(target|taiko/rtl|rtl|platform|projects|litex)/'
+          if [ "$EVENT" = workflow_dispatch ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "gateware=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -qE "$pattern"; then
+            echo "gateware=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "gateware=false" >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-unknown-elf
+      - run: make pocket
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: build/pocket/taikopocket.bin
+
+  gateware-sim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y verilator
+      - run: make -C gateware/taiko sim
+
+  bitstream:
+    needs: changes
+    if: needs.changes.outputs.gateware == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # the Quartus image does not fit next to the tools preinstalled on the runner
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/share/swift /usr/local/share/boost
+          sudo docker image prune -af > /dev/null
+          df -h /
+      - name: Compile with Quartus
+        run: |
+          docker run --rm -v "$PWD":/build -w /build/gateware/projects raetro/quartus:21.1 \
+            quartus_sh --flow compile openFPGA-RISC-V_pocket
+      - name: Summaries
+        if: always()
+        working-directory: gateware/projects/output_files
+        run: |
+          cat *.fit.summary || true
+          grep -A12 "Fmax Summary" *.sta.rpt | head -60 || true
+          grep -i "critical warning\|setup.*slack\|Worst-case" *.sta.summary | head -40 || true
+      # Quartus ends with success when timing is missed; such a bitstream must not be used
+      - name: Timing met
+        working-directory: gateware/projects/output_files
+        run: |
+          test -s openFPGA-RISC-V_pocket.rbf
+          if grep -q "Timing requirements not met" *.sta.rpt; then
+            echo "::error::timing requirements not met"; exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bitstream-reports
+          path: |
+            gateware/projects/output_files/*.summary
+            gateware/projects/output_files/*.rpt
+      # only a bitstream that met timing gets this name: later runs reuse the newest one
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bitstream
+          path: |
+            gateware/projects/output_files/*.rbf
+            gateware/projects/output_files/*.summary
+
+  release:
+    needs: [firmware, bitstream, gateware-sim]
+    if: always() && needs.firmware.result == 'success' && needs.gateware-sim.result == 'success' && (needs.bitstream.result == 'success' || needs.bitstream.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Last bitstream built, if this run built none
+        if: needs.bitstream.result == 'skipped'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=bitstream&per_page=1" --jq '.artifacts[0].archive_download_url')
+          test -n "$url"
+          gh api "$url" > bitstream.zip
+          mkdir -p artifacts/bitstream
+          unzip -o -q bitstream.zip -d artifacts/bitstream
+          ls artifacts/bitstream
+      - run: |
+          test -s "$(ls artifacts/bitstream/*.rbf | head -1)"
+          python3 tools/make_release.py --rbf "$(ls artifacts/bitstream/*.rbf | head -1)" \
+            --firmware artifacts/firmware/taikopocket.bin -o build/release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TaikoPocket-release
+          path: build/release

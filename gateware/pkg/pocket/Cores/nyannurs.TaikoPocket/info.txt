@@ -1,0 +1,5 @@
+Taiko Pocket
+
+A Taiko-style rhythm game for charts in the TJA format.
+Pack your songs with tools/packer/pack.py and copy library.tpl to
+/Assets/taikopocket/common/.
