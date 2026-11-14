@@ -142,34 +142,39 @@ about the platform. Update it when something changes.
 - `docs/performance.md` has the measurements; what is left for the CPU per frame is
   mostly the HUD.
 
-### Known and not done (from a code review, 2026-11-14)
+### Gateware version 4 (2026-11-14): simulated, not yet confirmed on a Pocket
 
-Gateware (each needs a new bitstream and a test on hardware):
-- Two buttons pressed within one 0.88 ms poll start one voice, and don wins over ka
-  (`taiko_audio.sv`); the desktop plays both.
-- The frame buffer is switched at the vertical sync, when the SoC's DMA has already
-  fetched about 82 lines: the top of the picture is one frame behind the rest. The lane
-  is below that. `present()` could switch when the DMA wraps instead.
-- An empty music FIFO after "finished" counts as the end of the song even if the
-  streamer has not delivered yet; the position can run a few samples ahead.
-- Volumes, hit map and debounce reach the audio clock domain unsynchronised; a write
-  while sound plays can give one bad sample.
-- The sprite sheet's address register takes 16 bits of a 17-bit space; fine while the
-  sheet is uploaded in one go from 0.
-- A warm reset does not reload the program's initialised data.
-- Unused: the CPU-fed audio path, the mono PCM path, three RTL files of the base
-  (`sram.sv`, `data_loader.sv`, `wishbone.sv`), the LiteX generator under `litex/`.
+What a code review found in the hardware, and two wishes, in one bitstream
+(`gateware/taiko/README.md`, "Versions"):
+- A don and a ka pressed in the same instant both sound (requests are counted).
+- Four hit sounds: the balloon's and the kusudama's are played when one bursts.
+- The frame buffer is switched where the SoC's reader starts over (`present()`), not
+  at the vertical sync, where the reader had already fetched 82 lines: the top of the
+  picture was one frame behind the rest. The sprite list is taken over at the start
+  of the same frame, and the firmware waits for that before it writes the other list.
+- The end of the song needs the streamer to have delivered everything.
+- Volumes, button masks and debounce cross into the audio clock as whole words.
+- `.data` is restored on every start (`crt0.S`, `link.ld`); button edges from before
+  a reset are dropped.
 
-Game:
-- The balloon and kusudama sounds are packed but never played: the hardware has two
-  hit sounds (don, ka).
-- The lyric line and the Go-Go flame are drawn by the CPU every frame (several ms).
-  The flame would fit the sprite layer at half resolution.
+### Known and not done
+
+- Unused in the gateware: the CPU-fed audio path, the mono PCM path, three RTL files
+  of the base (`sram.sv`, `data_loader.sv`, `wishbone.sv`), the LiteX generator under
+  `litex/`. Left as they are.
+- Two buttons of the same kind pressed in the same instant are one stroke on the
+  Pocket and two on the desktop.
+- The Go-Go flame is drawn by the CPU every frame of Go-Go Time (3 to 4 ms). It was
+  tried on the sprite layer at half resolution and taken back: a hit burst in front of
+  it hid it, because a sprite pixel is mixed with the picture under it, not with
+  another sprite. The layer would have to mix sprite over sprite first.
+- The lyric line is drawn by the CPU every frame (several ms on charts that have one).
 - Loading has no timeout: a read that never ends leaves "Loading..." on screen.
 - A Go-Go splash over 127 x 127 pixels is silently left out.
 - Auto-play stops hitting drumrolls for a while after a tempo drop (as YataiDON does).
 - A branch decision re-sorts every waiting note, and the chart loader makes several
   passes over all notes; both are slow only for very large charts.
 - Without an audio device the desktop build's clock does not move.
+- The skin has pictures the game does not use yet (dancers, second player).
 - Only the firmware (`make pocket`) and the library need rebuilding for game or skin
   changes; the bitstream only for gateware changes.

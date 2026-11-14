@@ -1262,24 +1262,18 @@ static void game_draw(void) {
          * would replace the note's pixels. */
         draw_splash();
     }
-    /* The Go-Go flame, all through Go-Go Time. Its ring is in the middle of its frame:
-     * centred on the judge circle. On the sprite layer it comes here, behind bar lines and
-     * notes; the CPU would blend its 2,900 soft pixels in every frame. */
-    int fire_frame = -1;
-    if (gogo && gfx_sprite_frames(SPR_FIRE)) {
-        fire_frame = (int)((now - gogo_since) / assets_cfg(CFG_FIRE_INTERVAL_MS, 50)) % gfx_sprite_frames(SPR_FIRE);
-        fire_frame = fire_frame < 0 ? 0 : fire_frame;
-        int cell = overlay_cell(SPR_FIRE, fire_frame);
-        if (cell >= 0) {
-            overlay_add(cell, JUDGE_X - gfx_sprite_w(SPR_FIRE) / 2, LANE_CY - gfx_sprite_h(SPR_FIRE) / 2, false);
-            fire_frame = -1;
-        }
-    }
     gfx_number_fx(SPR_NUM_M, j->score, GFX_W - 8, GAUGE_Y + 20, ALIGN_RIGHT, 0, stretch_px(fx.score_t), 32);
 
     prof_mark(PROF_FX);
-    if (fire_frame >= 0) { /* no layer, or no room on its sheet */
-        gfx_sprite_c(SPR_FIRE, fire_frame, JUDGE_X, LANE_CY);
+    /* The Go-Go flame, all through Go-Go Time, drawn by the CPU into the frame: under the
+     * notes and the hit burst, and showing through the burst. On the sprite layer it could
+     * not show through another sprite (a sprite pixel is mixed with the picture under it,
+     * not with a sprite), and that is how it is meant to look. Costs 3 to 4 ms a frame. */
+    if (gogo && gfx_sprite_frames(SPR_FIRE)) {
+        int frames = gfx_sprite_frames(SPR_FIRE);
+        int f = (int)((now - gogo_since) / assets_cfg(CFG_FIRE_INTERVAL_MS, 50)) % frames;
+        /* the flame's ring is in the middle of its frame: centre it on the judge circle */
+        gfx_sprite_c(SPR_FIRE, f < 0 ? 0 : f, JUDGE_X, LANE_CY);
     }
     /* the lane flashes are part of the lane picture: lane_flash_select() */
 

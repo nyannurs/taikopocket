@@ -25,10 +25,18 @@ output is 11.424 MHz (400x360 at 60 Hz) instead of 5.712 MHz.
   words over Wishbone, decodes, and pushes stereo samples into the 4096-deep FIFO.
   In the audio domain one sample is popped per 48 kHz tick and the **song position**
   is counted right there. If the FIFO is empty mid-song the position waits; after
-  the last sample it keeps counting in silence. The CPU never touches a sample.
-- **Hit sounds.** Don and ka samples (up to 16,384 each, any rate up to 48 kHz) sit
-  in block RAM. A press edge on a mapped button starts one of four voices in the
-  audio domain; the CPU can start them too. With all four busy the oldest restarts.
+  the last sample it keeps counting in silence. "After the last sample" is when the
+  game has said that no more data comes and the streamer has passed on all it was
+  given, for two sample periods; an empty FIFO alone is not the end. The CPU never
+  touches a sample.
+- **Hit sounds.** Four sounds sit in one block RAM of 40,960 samples, each with its
+  own stretch of it, length and rate (up to 48 kHz): don (16,384 samples), ka
+  (12,288), and two only the CPU starts, used for a balloon and a kusudama bursting
+  (6,144 each). A press edge on a mapped button starts one of four voices in the
+  audio domain; the CPU can start any sound. Requests are counted per sound, so a
+  don and a ka pressed in the same poll of the pad both play; two buttons of the
+  same kind in one poll are one stroke. With all four voices busy the oldest
+  restarts. A request for a sound that is not loaded does nothing.
 - **Mixer.** `music * gain * volume + hits * volume`, saturated, every sample.
 - **Input.** Each press and release is put in a 64-entry FIFO with the value of the
   free-running output sample counter. The buttons of all four controller ports are
@@ -106,11 +114,10 @@ dominates. Timestamps have the same 0.9 ms polling granularity.
 
 ## Resources
 
-Block RAM: the hit sample memory is 32,768 x 16 bits = 64 M10K blocks (21% of the
-device's 308). The stock core reports 31% with its logic analyser, which is now
-off. To halve it, set `HIT_ADDR` to 13 (8,192 samples per sound) in `taiko_top`,
-`PF_HIT_MAX_SAMPLES` in `src/platform/platform.h` and the slot shift (`slot << 14`) in
-`pf_hit_load()` of `platform_pocket.c`.
+Block RAM: the hit sample memory is 40,960 x 16 bits = 77 M10K blocks (a quarter of
+the device's 308). Its size is `HIT_DEPTH` in `taiko_top`; the four sounds' shares
+are the reset values of their base registers there and the table in `pf_hit_room()`
+of `platform_pocket.c` (and `sm_hit_room()` of the model).
 
 ## Simulation
 
@@ -118,13 +125,26 @@ off. To halve it, set `HIT_ADDR` to 13 (8,192 samples per sound) in `taiko_top`,
 make -C gateware/taiko sim     # needs verilator; output in build/gateware
 ```
 
-Checks (183): hit latency, polyphony, restart, saturation and volume against
-softmix; button events with exact timestamps, overflow flag; five streaming cases
+Checks (188): hit latency, polyphony, restart, saturation, volume, two drums at once,
+the CPU-only sounds and an empty slot against softmix; button events with exact timestamps, overflow flag; five streaming cases
 (ADPCM stereo/mono, PCM stereo/mono, lead-in, mid-block start, ring wrap, ring
 running dry) compared sample by sample and position by position; the CPU-fed path
 of the stock core; the frame counter.
 
 Not simulated: the Altera PLLs and `dcfifo`, the SDRAM controller, timing closure.
+
+## Versions
+
+`TK_OVL_CTRL` reads a version number in its top byte. It began as the sprite layer's
+and now stands for this whole block; the firmware uses what the number promises and
+runs on older bitstreams without the rest.
+
+| Version | Adds |
+|---|---|
+| 1 | sprite layer, 65,536 pixel sheet |
+| 2 | pixel doubling, cell addresses in pairs of pixels, 73,728 pixel sheet |
+| 3 | row end mark, pixels that are drawn already are passed over |
+| 4 | four hit sounds; both drums at once; `TK_OVL_CTRL` bit 2 tells which sprite list is on screen; sheet address bit 16; settings cross into the audio clock as whole words |
 
 ## Registers
 

@@ -35,9 +35,6 @@ static const group groups[] = {
     {SPR_NUM_POTATO, 0, 0, B_COUNTER, false, true, false},
     /* soft smoke, taller than a cell can be and too large for the sheet at full resolution */
     {SPR_GOGO_SPLASH, 0, 0, B_SPLASH, false, true, true},
-    /* the Go-Go flame: soft too, and four frames of 96 x 96; it shares the palette of the
-     * inner hit effect, which has its colours */
-    {SPR_FIRE, 0, 0, B_LOWER, false, true, true},
 };
 #define GROUPS ((int)(sizeof groups / sizeof groups[0]))
 
