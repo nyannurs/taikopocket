@@ -118,7 +118,13 @@ next four frames.
 Notes are drawn back to front. When the next note to be drawn (the one that ends up
 on top) overlaps the current one, the current one is drawn without the columns the
 other one's opaque part will cover, row by row (`gfx_sprite_spans()`,
-`gfx_sprite_behind()`). Note names closer than 8 px to the last one drawn are skipped.
+`gfx_sprite_behind()`). Note names closer than 8 px to the last one drawn are skipped
+there, since a pile of names would be blended pixel by pixel.
+
+On the sprite layer every note has its name. Names of notes that lie close together
+overlap, the earlier note's on top, as the notes themselves do; nothing is left out, so
+a name does not come and go when one note overtakes another. The names are the first
+sprites of the frame's list: if a list is ever too long, they are what is dropped.
 
 ## Song select
 

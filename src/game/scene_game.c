@@ -1089,9 +1089,46 @@ static void lane_number(int id, int value, int cx, int y, int spacing, int stret
     }
 }
 
-static void draw_notes(void) {
+/* The note names under the lane.
+ *
+ * On the sprite layer every note has its name, and names of notes that lie close together
+ * overlap, the earlier note's on top, exactly as the notes do. They are the first sprites
+ * of the frame's list: when a list is too long the ones added first are left out, and a
+ * name is worth less than a note or a bar line.
+ * Drawn by the CPU (no layer), a name closer than 8 px to the one drawn before it is left
+ * out: a pile of names is blended pixel by pixel there and cannot be afforded. Which
+ * name stays depends on the order of the moment, so it can flicker when one note
+ * overtakes another; the layer has no such rule. */
+static void draw_note_names(bool layer) {
     static const uint8_t moji_frame[12] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 255, 11};
+    if (gfx_sprite_frames(SPR_SENOTES) < 12) {
+        return;
+    }
+    gfx_clip(LANE_X, SENOTES_Y, GFX_W - LANE_X, 16);
+    int label_x = -10000;
+    for (int i = act_n - 1; i >= 0; i--) {
+        const tp_note *n = act[i].n;
+        /* also of notes that are not drawn ("doron"), as in YataiDON */
+        if (n->type == TP_BARLINE || n->moji >= 12 || moji_frame[n->moji] == 255) {
+            continue;
+        }
+        int x = note_x(n, now);
+        if (!layer) {
+            if (x - label_x > -8 && x - label_x < 8) {
+                continue;
+            }
+            label_x = x;
+        }
+        lane_sprite(SPR_SENOTES, moji_frame[n->moji], x - 24, SENOTES_Y, 32);
+    }
+    gfx_clip_reset();
+}
+
+static void draw_notes(void) {
     bool layer = overlay_on();
+    if (layer) {
+        draw_note_names(true);
+    }
     gfx_clip(LANE_X, LANE_Y, GFX_W - LANE_X, LANE_H);
     uint16_t bar_color = (uint16_t)assets_cfg(CFG_BARLINE_COLOR, 0xFFFF);
     for (int i = 0; i < act_n; i++) {
@@ -1202,24 +1239,8 @@ static void draw_notes(void) {
         }
     }
     gfx_clip_reset();
-    /* note names under the lane */
-    if (gfx_sprite_frames(SPR_SENOTES) >= 12) {
-        gfx_clip(LANE_X, SENOTES_Y, GFX_W - LANE_X, 16);
-        int label_x = -10000;
-        for (int i = act_n - 1; i >= 0; i--) {
-            const tp_note *n = act[i].n;
-            /* also of notes that are not drawn ("doron"), as in YataiDON */
-            if (n->type == TP_BARLINE || n->moji >= 12 || moji_frame[n->moji] == 255) {
-                continue;
-            }
-            int x = note_x(n, now);
-            if (x - label_x > -8 && x - label_x < 8) {
-                continue; /* piled-up notes: one name is enough, the rest could not be read anyway */
-            }
-            label_x = x;
-            lane_sprite(SPR_SENOTES, moji_frame[n->moji], x - 24, SENOTES_Y, 32);
-        }
-        gfx_clip_reset();
+    if (!layer) {
+        draw_note_names(false);
     }
 }
 
