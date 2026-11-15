@@ -164,6 +164,179 @@ static int gauge_shown, soul_shown; /* what is drawn; -1: nothing yet */
 static void hud_reset(void);
 static void hud_update(void);
 
+/* ---- notes flying to the soul ----
+ * YataiDON's NoteArc (its skin's note_arc.lua): a note that was hit, and every hit of a
+ * drumroll, flies from the judge circle to the soul in 31 frames, along a curve through
+ * 100 points worked out once. Only on the sprite layer, where the CPU draws nothing for
+ * it: the pictures are the lane's notes, which are on the sheet already. */
+static bool extras = true; /* flying notes and dancers are shown */
+#define ARC_MAX 32
+#define ARC_MS (31 * 16.67)
+#define ARC_STEPS 100
+static struct {
+    double t0;
+    int cell;
+} arcs[ARC_MAX];
+static int arc_next;
+static int16_t arc_x[ARC_STEPS + 1], arc_y[ARC_STEPS + 1];
+
+/* the curve from the judge circle to the soul, whose middle is at (to_x, to_y) */
+static void arc_setup(int to_x, int to_y) {
+    float sx = JUDGE_X - NOTE_HALF, sy = LANE_CY - NOTE_HALF, ex = (float)(to_x - NOTE_HALF), ey = (float)(to_y - NOTE_HALF);
+    /* the point the curve bends towards: half way, above the higher end by YataiDON's
+     * 425 px for a flight of 808 px */
+    float cx = (sx + ex) / 2, cy = (sy < ey ? sy : ey) - 425.0f * (ex - sx) / 808.0f;
+    for (int i = 0; i <= ARC_STEPS; i++) {
+        float t = (float)i / ARC_STEPS, ti = 1 - t;
+        arc_x[i] = (int16_t)(ti * ti * sx + 2 * ti * t * cx + t * t * ex);
+        arc_y[i] = (int16_t)(ti * ti * sy + 2 * ti * t * cy + t * t * ey);
+    }
+}
+
+static void arc_reset(void) {
+    for (int i = 0; i < ARC_MAX; i++) {
+        arcs[i].t0 = -1e9;
+    }
+}
+
+static void arc_start(int frame) {
+    int cell = overlay_cell(SPR_NOTES, frame);
+    if (cell >= 0 && extras) {
+        arcs[arc_next].t0 = now;
+        arcs[arc_next].cell = cell;
+        arc_next = (arc_next + 1) % ARC_MAX;
+    }
+}
+
+static void draw_arcs(void) {
+    for (int k = 0; k < ARC_MAX; k++) {
+        int i = (arc_next + k) % ARC_MAX; /* oldest first: the newest is on top */
+        double t = now - arcs[i].t0;
+        if (t >= 0 && t < ARC_MS) {
+            int at = (int)(t * (ARC_STEPS / ARC_MS));
+            overlay_add_extra(arcs[i].cell, arc_x[at], arc_y[at]);
+        }
+    }
+}
+
+/* ---- dancers ----
+ * After the dancer scripts of YataiDON's skin (bg_objects/dancer.lua, background.lua).
+ * Five places, taken in the order middle, left of it, right of it, far left, far right.
+ * The first dancer comes 0.8 s into the scene; the others with the gauge, one for every
+ * fifth of it, all five once the song is cleared, and they go again when it falls. A
+ * dancer comes (the skin's second row of pictures), dances (the first row, every dancer
+ * on one clock, so that late ones are in step) and goes (the third row); a row takes
+ * DancerLoopBeats beats of the tempo of the moment. On the sprite layer only. */
+#define DANCERS 5
+enum { DANCE_OUT, DANCE_COMING, DANCE_ON, DANCE_GOING };
+static const uint8_t dance_place[DANCERS] = {2, 1, 3, 0, 4}; /* the place of the n-th dancer, left to right */
+static struct {
+    uint8_t state[DANCERS]; /* by order of coming */
+    double t0[DANCERS];     /* when that state began */
+    double clock_t0;        /* when the first dancer began to dance */
+    bool clock_on, first_due_set, first_done;
+    double first_due, beat; /* beat: ms, as the times above were counted */
+    int active, last_milestone;
+} dance;
+
+static void dance_reset(void) {
+    memset(&dance, 0, sizeof dance);
+    dance.last_milestone = 1;
+}
+
+static void dance_add(void) {
+    if (dance.active < DANCERS) {
+        dance.state[dance.active] = DANCE_COMING;
+        dance.t0[dance.active] = now;
+        dance.active++;
+    }
+}
+
+static void dance_leave(void) {
+    if (dance.active > 1) {
+        dance.active--;
+        dance.state[dance.active] = DANCE_GOING;
+        dance.t0[dance.active] = now;
+    }
+}
+
+static void dance_update(void) {
+    if (!extras || gfx_sprite_frames(SPR_DANCER) < 1 || !overlay_on()) {
+        return; /* the skin has no dancers, or there is no sprite layer to show them */
+    }
+    double beat = cur_bpm != 0 ? 60000.0 / fabs(cur_bpm) : dance.beat;
+    if (dance.beat != 0 && beat != dance.beat) { /* keep every place in its row at the new tempo */
+        for (int i = 0; i < DANCERS; i++) {
+            dance.t0[i] = now - (now - dance.t0[i]) / dance.beat * beat;
+        }
+        dance.clock_t0 = now - (now - dance.clock_t0) / dance.beat * beat;
+    }
+    dance.beat = beat;
+    if (!dance.first_done) {
+        if (!dance.first_due_set) {
+            dance.first_due_set = true;
+            dance.first_due = now + 800;
+        }
+        if (now >= dance.first_due) {
+            dance.first_done = true;
+            dance_add();
+        }
+    }
+    const tp_gauge *g = &song.judge.gauge;
+    int milestone = DANCERS;
+    if (!tp_gauge_clear(g)) {
+        milestone = g->max_points > 0 ? (int)floor(g->points / g->max_points * DANCERS) : 0;
+        milestone = milestone > DANCERS - 1 ? DANCERS - 1 : milestone;
+    }
+    for (; dance.last_milestone < milestone; dance.last_milestone++) {
+        dance_add();
+    }
+    for (; dance.last_milestone > milestone; dance.last_milestone--) {
+        dance_leave();
+    }
+    double row_beats = assets_cfg(CFG_DANCER_LOOP_BEATS, 4);
+    for (int i = 0; i < DANCERS; i++) {
+        if (dance.beat <= 0 || (dance.state[i] != DANCE_COMING && dance.state[i] != DANCE_GOING) ||
+            (now - dance.t0[i]) / dance.beat < row_beats) {
+            continue;
+        }
+        if (dance.state[i] == DANCE_GOING) {
+            dance.state[i] = DANCE_OUT;
+        } else {
+            dance.state[i] = DANCE_ON;
+            if (!dance.clock_on) {
+                dance.clock_on = true;
+                dance.clock_t0 = now;
+            }
+        }
+    }
+}
+
+static void draw_dancers(void) {
+    int frames = assets_cfg(CFG_DANCER_FRAMES, 0), w = gfx_sprite_w(SPR_DANCER);
+    double row_beats = assets_cfg(CFG_DANCER_LOOP_BEATS, 4);
+    if (frames < 1 || dance.beat <= 0) {
+        return;
+    }
+    float gap = (float)(GFX_W - DANCERS * w) / (DANCERS + 1); /* evenly across the screen */
+    for (int i = 0; i < DANCERS; i++) {
+        if (dance.state[i] == DANCE_OUT) {
+            continue;
+        }
+        static const uint8_t row_of[] = {0, 1, 0, 2};
+        double t = (now - (dance.state[i] == DANCE_ON ? dance.clock_t0 : dance.t0[i])) / dance.beat;
+        t = dance.state[i] == DANCE_ON ? t - floor(t / row_beats) * row_beats : t;
+        int f = (int)(t / row_beats * frames);
+        f = f < 0 ? 0 : f >= frames ? frames - 1 : f;
+        int cell = overlay_dancer(i + 1, row_of[dance.state[i]] * frames + f);
+        if (cell >= 0) {
+            /* they stand on the bottom edge of the screen, below the lyric */
+            overlay_add_extra(cell, (int)(gap + (float)dance_place[i] * ((float)w + gap)),
+                              GFX_H - gfx_sprite_h(SPR_DANCER));
+        }
+    }
+}
+
 /* ---------- note visibility ---------- */
 
 static float px_per_ms(const tp_note *n) { return (float)(n->bpm / 240000.0 * n->scroll_x) * TRAVEL; }
@@ -455,6 +628,9 @@ static void game_enter(void) {
     lyric = NULL;
     lyric_len = 0;
     branch_shown = TP_BRANCH_NORMAL;
+    dance_reset();
+    arc_reset();
+    extras = !(pf_option("extras") && pf_option("extras")[0] == '0'); /* test hook: without them, to compare */
     paused = false;
     pause_drawn = -1;
     retrying = false;
@@ -518,12 +694,18 @@ static void handle_judge_events(void) {
             if ((uint32_t)e.note->index < GONE_MAX) {
                 gone[e.note->index] = 1;
             }
+            if (e.note->type >= TP_DON && e.note->type <= TP_KAT_L) {
+                arc_start(e.note->type);
+            } else if (e.note->type == TP_BALLOON_HEAD) { /* a burst balloon flies as a big don */
+                arc_start(TP_DON_L);
+            }
             break;
         case TP_JE_SCORE:
             fx.popup_value = e.value;
             fx.popup_t = now;
             break;
         case TP_JE_DRUMROLL_HIT:
+            arc_start((e.drum == TP_DRUM_KAT ? TP_KAT : TP_DON) + (e.note && e.note->type == TP_ROLL_HEAD_L ? 2 : 0));
             fx.roll_count = e.value;
             fx.roll_t = now;
             fx.flash_kind = 2;
@@ -867,6 +1049,7 @@ static void game_update(void) {
     }
     tp_judge_end_frame(j, now);
     handle_judge_events();
+    dance_update();
     if (j->combo != fx.last_combo) {
         fx.last_combo = j->combo;
         fx.combo_t = now;
@@ -1004,6 +1187,7 @@ static void hud_reset(void) {
         gfx_bg_read(GAUGE_X + GAUGE_W + 4, GAUGE_Y - 8, soul_w, soul_h, soul_under);
     }
     gauge_shown = soul_shown = -1;
+    arc_setup(GAUGE_X + GAUGE_W + 4 + (soul_w ? soul_w : 32) / 2, GAUGE_Y - 8 + (soul_w ? soul_h : 32) / 2);
 }
 
 /* redraws gauge and soul on the background layer if their picture changed */
@@ -1304,6 +1488,12 @@ static void game_draw(void) {
 
     prof_mark(PROF_NOTES);
     draw_notes();
+    /* decorations: they never take a place in the layer's list from the lane's sprites; when
+     * it is short the dancers, added last, are kept before the flying notes */
+    draw_arcs();
+    if (!paused && !prof_detail) { /* the pause menu and the statistics box are where the dancers stand */
+        draw_dancers();
+    }
     prof_mark(PROF_HUD);
 
     /* drum: flashes held for 67 ms, fading over 100 ms; combo from 3, stretching on every hit */

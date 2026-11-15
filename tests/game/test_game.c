@@ -3,7 +3,9 @@
  * auto-play and with a sample-accurate scripted player, and checks the result.
  * Every screen is drawn, so this also catches renderer crashes. */
 #include "game/game.h"
+#include "game/overlay.h"
 #include "host/host.h"
+#include "platform/common/softovl.h"
 #include "test.h"
 
 static void frames(int n) {
@@ -26,6 +28,46 @@ static uint32_t screen_hash(void) {
         h = (h ^ p[i]) * 16777619u;
     }
     return h;
+}
+
+/* The sprite layer's list of the frame just shown: how many dancers are in it, and how
+ * many notes above the lane (on their way to the soul). The most seen are kept. */
+static int most_dancers, most_flying, dancers_now;
+static double first_dancer_ms;
+static void watch_extras(void) {
+    static bool known, is_dancer[PF_OVL_CELLS], is_note[PF_OVL_CELLS];
+    if (!known) {
+        known = true;
+        for (int kind = 0; kind < OVERLAY_DANCER_KINDS; kind++) {
+            for (int f = 0; f < OVERLAY_DANCER_FRAMES; f++) {
+                if (overlay_dancer(kind, f) >= 0) {
+                    is_dancer[overlay_dancer(kind, f)] = true;
+                }
+            }
+        }
+        for (int f = 1; f <= 4; f++) {
+            if (overlay_cell(SPR_NOTES, f) >= 0) {
+                is_note[overlay_cell(SPR_NOTES, f)] = true;
+            }
+        }
+    }
+    uint32_t addr;
+    int w, h, flying = 0;
+    bool clip, twice;
+    int count = ovl_state_cell(0, &addr, &w, &h, &clip, &twice);
+    const uint32_t *sprites = ovl_state_sprites();
+    dancers_now = 0;
+    for (int i = 0; i < count; i++) {
+        int cell = (int)(sprites[i] >> 20 & 255), y = (int)(sprites[i] >> 10 & 0x3FF);
+        y = y >= 512 ? y - 1024 : y;
+        dancers_now += is_dancer[cell];
+        flying += is_note[cell] && y < 120;
+    }
+    if (dancers_now && !most_dancers) {
+        first_dancer_ms = song_now_ms();
+    }
+    most_dancers = dancers_now > most_dancers ? dancers_now : most_dancers;
+    most_flying = flying > most_flying ? flying : most_flying;
 }
 
 /* presses the right drum at the exact sample of every note that is due */
@@ -69,6 +111,9 @@ static void play_selected(int course_moves, bool scripted) {
             }
         }
         host_frame();
+        if (last_result.score == 0xFFFFFFFF) {
+            watch_extras();
+        }
     }
     CHECK(guard < 60 * 600);
     frames(5);
@@ -102,6 +147,11 @@ int main(int argc, char **argv) {
     CHECK(last_result.rolls > 20);
     CHECK_EQ(last_result.max_combo, 34);
     CHECK(!score_find(lib_get_song(0)->chart_crc, 3)); /* auto-play is not recorded */
+    /* hit notes flew to the soul, several at a time during the drumroll; the dancers came
+     * with the gauge, all five once the song was cleared */
+    printf("  flying %d, dancers %d, first at %.0f ms\n", most_flying, most_dancers, first_dancer_ms);
+    CHECK(most_flying >= 2);
+    CHECK_EQ(most_dancers, 5);
     tap(PF_BTN_A); /* back to song select */
     frames(20);
     CHECK_EQ(screen_hash(), select_hash); /* same screen as before the play */

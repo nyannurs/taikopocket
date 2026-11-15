@@ -125,9 +125,13 @@ about the platform. Update it when something changes.
   `taikopocket`, data slots 0 program, 1-8 library volumes).
 - `tools/make_release.py` builds the SD card folder; `.github/workflows/pocket.yml`
   builds firmware + bitstream (Quartus container) + release in GitHub Actions.
-- Effects (judgment text, burst, counters) follow YataiDON's skin animation values;
-  a copy of its `animation.json` and scripts is in `third_party/yatai_skin/` for
-  reference only. The graphics are the default skin's (`skins/`).
+- Effects (judgment text, burst, counters, notes flying to the soul, dancers) follow
+  YataiDON's skin, not its engine: the engine repository has no skin, and much of what
+  is seen is in the skin's Lua scripts. The skin is **PyTaikoGreen**,
+  https://ese.tjadataba.se/Yonokid/PyTaikoGreen (branch `main`; a file is at
+  `<repo>/raw/branch/main/<path>`, the list of files in `checksums.sha256`). The files
+  read so far are in `third_party/yatai_skin/` for reference only. The graphics are
+  the default skin's (`skins/`).
 
 ## Open
 
@@ -167,6 +171,13 @@ Since 0.2.0, in the game: charts with one route per branch point (only `#M`, the
 `#N`) play through, because a section belongs to its own `#BRANCHSTART`
 (`docs/judge.md`, extensions); song rows show two arrows for a course with branches.
 
+Since 0.3.0, in the game (not in a release yet): note names overlap instead of one being
+left out; the scroll speed follows YataiDON's corrected formula; notes that were hit fly
+to the soul and dancers stand at the bottom (`docs/video.md`, "Flying notes and
+dancers"). Both are sprites of the layer and need no new bitstream. The dancers need a
+library packed with this version: an older library has no dancer pictures and shows
+none.
+
 ### Known and not done
 
 - Unused in the gateware: the CPU-fed audio path, the mono PCM path, three RTL files
@@ -185,6 +196,8 @@ Since 0.2.0, in the game: charts with one route per branch point (only `#M`, the
 - A branch decision re-sorts every waiting note, and the chart loader makes several
   passes over all notes; both are slow only for very large charts.
 - Without an audio device the desktop build's clock does not move.
-- The skin has pictures the game does not use yet (dancers, second player).
+- The skin has pictures the game does not use (second player, player characters, mob,
+  the soul's explosion: `docs/video.md`). Its dancers are Taikojiro's placeholder
+  pictures, a turning tile.
 - Only the firmware (`make pocket`) and the library need rebuilding for game or skin
   changes; the bitstream only for gateware changes.

@@ -52,6 +52,12 @@ SPRITE(BG_MISS)
 SPRITE(SONGSELECT_BG)
 SPRITE(RESULT_BG_CLEAR)
 SPRITE(RESULT_BG_FAIL)
+SPRITE(DANCER)          /* 3 rows of DANCER_FRAMES: dancing, coming, going */
+SPRITE(DANCER_1)        /* the same for one place only, where a skin has it: the middle, */
+SPRITE(DANCER_2)        /* left of it, */
+SPRITE(DANCER_3)        /* right of it, */
+SPRITE(DANCER_4)        /* far left, */
+SPRITE(DANCER_5)        /* far right */
 
 /* Sounds: mono 16-bit. */
 SOUND(DON)
@@ -68,3 +74,5 @@ CFG(EXPLOSION_INTERVAL_MS)
 CFG(EXPLOSION_FRAMES)
 CFG(GOGOSPLASH_INTERVAL_MS)
 CFG(BARLINE_COLOR)      /* RGB565 */
+CFG(DANCER_FRAMES)      /* pictures in one row of a dancer */
+CFG(DANCER_LOOP_BEATS)  /* beats one row takes */

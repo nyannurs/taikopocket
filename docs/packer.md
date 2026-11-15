@@ -61,7 +61,10 @@ A skin folder is a Taikojiro skin: `img/*.png`, `img/imgdet.ini`, `snd/dong.wav`
 `snd/ka.wav`. Images are used at their own pixel size on the 400x360 screen; full
 width images (512 px) are cropped. An extension-less dummy file disables an image, as
 in Taikojiro. Which images are used is listed in `src/game/assets.def` and
-`tools/packer/taikopack/skin.py`. Not used: dancers, mob, player characters, 2P images.
+`tools/packer/taikopack/skin.py`. Not used: mob, player characters, the soul's explosion,
+2P images, and `dispconf.ini` (the layout is the game's own). Dancers are read as one
+image `dancer.png` or as single pictures in a folder `dancer/`, as Taikojiro's `exp.txt`
+describes them, with `DancerFrames` and `DancerLoopBeats` from `imgdet.ini`.
 
 The skin is baked into the library, so changing it only needs a re-pack.
 

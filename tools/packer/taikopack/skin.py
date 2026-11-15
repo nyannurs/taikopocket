@@ -149,6 +149,28 @@ class SkinSource:
                 return im
         return None
 
+    def dancer(self, place: str, count: int) -> list | None:
+        """The 3 * count pictures of a dancer (dancing, coming, going): rows of one image
+        dancer.png (dancer_1.png for a place), or files dancer_n1.., dancer_a1.., dancer_d1..
+        (dancer_1n1.. for a place) in the folder "dancer". `place` is "" or "1" .. "5". A
+        missing or 1 x 1 picture is an empty one."""
+        if not self.folder or count < 1:
+            return None
+        folder = os.path.join(self.folder, "img", "dancer")
+        if not os.path.isdir(folder):
+            im = self.image("dancer_" + place if place else "dancer")
+            return _grid(im, count, 3) if im else None
+        frames = []
+        for row in "nad":
+            for i in range(1, count + 1):
+                path = os.path.join(folder, f"dancer_{place}{row}{i}.png")
+                frames.append(Image.open(path).convert("RGBA") if os.path.exists(path) else None)
+        sizes = [f.size for f in frames if f and f.size != (1, 1)]
+        if not sizes:
+            return None
+        size = max(sizes)
+        return [f if f and f.size == size else Image.new("RGBA", size, (0, 0, 0, 0)) for f in frames]
+
     def int(self, key: str, default: int) -> int:
         try:
             return int(float(self.cfg.get(key, default)))
@@ -342,6 +364,8 @@ def build_frames(src: SkinSource) -> dict[str, list]:
         symbols += _grid(im, 2, 1)
     put("COURSE_SYMBOL", symbols)
     grid("GOGO_SPLASH", "gogosplash", src.int("GoGoSplashFrames", 8))
+    for name, place in [("DANCER", "")] + [(f"DANCER_{k}", str(k)) for k in range(1, 6)]:
+        put(name, src.dancer(place, src.int("DancerFrames", 0)))
 
     for name, stem, ax, ay in (("BG", "bg", 0.5, 0.5), ("BG_CLEAR", "bg_clear", 0.5, 0.5),
                                ("BG_HOT", "bg_hot", 0.5, 0.5), ("BG_MISS", "bg_miss", 0.5, 0.5),
@@ -370,6 +394,8 @@ def build_cfg(src: SkinSource) -> dict[str, int]:
         "EXPLOSION_FRAMES": src.int("ExplosionFrames", 0),
         "GOGOSPLASH_INTERVAL_MS": src.int("GoGoSplashInterval", 50),
         "BARLINE_COLOR": rgb565(*[min(255, int(c * 255)) for c in bar]),
+        "DANCER_FRAMES": max(0, src.int("DancerFrames", 0)),
+        "DANCER_LOOP_BEATS": max(1, src.int("DancerLoopBeats", 4)),
     }
 
 

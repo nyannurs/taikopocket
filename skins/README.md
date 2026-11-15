@@ -9,7 +9,8 @@ format of the PC simulator Taikojiro. The packer puts one into the library
 | `taikojiro-original/` | **The default skin.** Taiko Pocket is developed and tested with it; it is also attached to the releases as a zip. |
 
 To make your own, copy the folder, change the pictures and sounds, and pack with
-`--skin your-folder`. Any Taikojiro skin works as it is.
+`--skin your-folder`. A Taikojiro skin can be used as it is; `docs/packer.md` says
+which of its pictures the game does not show.
 
 ## Credit
 

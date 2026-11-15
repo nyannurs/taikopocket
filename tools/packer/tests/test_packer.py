@@ -107,6 +107,27 @@ class Sprites(unittest.TestCase):
         self.assertEqual(len(cfg), 4 + 4 * len(ids["CFG"]))
 
 
+    def test_dancers(self):
+        # a folder of single pictures: three rows of DancerFrames, 1 x 1 files are empty frames
+        folder = os.path.join(TMP, "skin_dancers")
+        shutil.rmtree(folder, ignore_errors=True)
+        os.makedirs(os.path.join(folder, "img", "dancer"))
+        with open(os.path.join(folder, "img", "imgdet.ini"), "w") as f:
+            f.write("[ImageSettings]\nDancerFrames=2\nDancerLoopBeats=2\n")
+        for name, size in (("dancer_n1", (20, 30)), ("dancer_n2", (20, 30)), ("dancer_a1", (1, 1)),
+                           ("dancer_a2", (20, 30)), ("dancer_d1", (20, 30)), ("dancer_3n1", (20, 30))):
+            Image.new("RGBA", size, (200, 0, 0, 255 if size != (1, 1) else 0)).save(
+                os.path.join(folder, "img", "dancer", name + ".png"))
+        src = skin.SkinSource(folder)
+        frames = src.dancer("", 2)
+        self.assertEqual([f.size for f in frames], [(20, 30)] * 6)
+        self.assertEqual([f.getbbox() is not None for f in frames], [True, True, False, True, True, False])
+        self.assertEqual([f.getbbox() is not None for f in src.dancer("3", 2)], [True] + [False] * 5)
+        self.assertIsNone(src.dancer("1", 2))
+        cfg = skin.build_cfg(src)
+        self.assertEqual((cfg["DANCER_FRAMES"], cfg["DANCER_LOOP_BEATS"]), (2, 2))
+
+
 class Packing(unittest.TestCase):
     def setUp(self):
         shutil.rmtree(TMP, ignore_errors=True)

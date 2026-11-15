@@ -19,11 +19,23 @@ extern int overlay_bar, overlay_bar_branch;
 #define OVERLAY_ROLL_PIECES 4
 extern int overlay_roll_piece[2][OVERLAY_ROLL_PIECES];
 
+/* Dancers: kind 0 is the skin's dancer, 1 .. 5 the one of a place of its own (the default
+ * if the skin has none for it). Frames as in SPR_DANCER. -1: no dancers on the sheet. */
+#define OVERLAY_DANCER_KINDS 6
+#define OVERLAY_DANCER_FRAMES 96
+int overlay_dancer(int kind, int frame);
+
 /* A frame's sprites, added back to front like drawing. `dim` shows it at half strength
  * (the layer has no per-sprite alpha; fades are two steps). */
 void overlay_begin(void);
 void overlay_add(int cell, int x, int y, bool dim);
+/* A decoration (flying notes, dancers): in front of the sprites added before it and behind
+ * those added after the first one. The layer takes 128 sprites; decorations only get the
+ * places the frame's other sprites do not need, the ones added last first. */
+void overlay_add_extra(int cell, int x, int y);
 void overlay_end(void);
+int overlay_listed(void); /* sprites added since overlay_begin(), without the decorations */
+int overlay_extras(void); /* decorations added */
 void overlay_clear(void); /* no sprites, for scenes that have none */
 
 #endif

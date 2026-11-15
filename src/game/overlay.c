@@ -154,10 +154,11 @@ static bool collect(const group *g, int frames) {
     return true;
 }
 
-/* merges the least used colours into their nearest neighbours until PF_OVL_COLOURS are left, numbers them */
-static void reduce(void) {
+/* merges the least used colours into their nearest neighbours until `keep` are left, numbers
+ * them from 1; returns how many there are */
+static int reduce(int keep) {
     int kept = col_n;
-    while (kept > PF_OVL_COLOURS) {
+    while (kept > keep) {
         int least = -1;
         for (int i = 0; i < col_n; i++) {
             if (col[i].into < 0 && (least < 0 || col[i].uses < col[least].uses)) {
@@ -184,6 +185,7 @@ static void reduce(void) {
             col[i].index = next++;
         }
     }
+    return kept;
 }
 
 static uint8_t index_of(uint32_t key) {
@@ -227,13 +229,14 @@ static void upload_palette(int bank) {
 }
 
 static uint32_t tile_addr[PF_OVL_CELLS]; /* where each cell's pixels start on the sheet */
+static uint8_t bank_colours[PF_OVL_BANKS]; /* palette entries 1 .. n of each bank are taken */
+static uint16_t base_colour[PF_OVL_MAX_SIZE * PF_OVL_MAX_SIZE];
+static uint8_t base_alpha[PF_OVL_MAX_SIZE * PF_OVL_MAX_SIZE];
 
 /* The burst comes in two tints of one shape. If frame `f` of group `g` has the pixels of
  * its frame 0 in other colours, it becomes a cell on the same sheet pixels with its own
  * palette (bank `bank`), and half the burst's sheet space is free for other things. */
 static bool recolour(const group *g, int f, int first_cell, int bank) {
-    static uint16_t base_colour[PF_OVL_MAX_SIZE * PF_OVL_MAX_SIZE];
-    static uint8_t base_alpha[PF_OVL_MAX_SIZE * PF_OVL_MAX_SIZE];
     int w = gfx_sprite_w(g->sprite), h = gfx_sprite_h(g->sprite);
     if (!gfx_sprite_decode(g->sprite, g->first, base_colour, base_alpha) ||
         !gfx_sprite_decode(g->sprite, g->first + f, px_colour, px_alpha) ||
@@ -320,6 +323,156 @@ static bool add_frame(int w, int h, int bank, bool clip, bool twice) {
     return true;
 }
 
+/* ---- dancers ----
+ * The default dancer's pictures go on the sheet with their colours in the last entries of
+ * the bar lines' bank (which uses two). Pictures that are the same share a cell: the rows
+ * of a Taikojiro dancer repeat each other. A place's own dancer is shown only if it is the
+ * default one in other colours, as cells on the same sheet pixels with those colours in
+ * the same entries of a bank that has them free. Otherwise that place gets the default. */
+static int16_t dancer_cells[OVERLAY_DANCER_KINDS][OVERLAY_DANCER_FRAMES];
+
+/* the colour of every entry `index` of the dancer palette in kind `sprite`, if that is
+ * frame for frame the default dancer in other colours */
+static bool dancer_colours(int sprite, int frames, uint32_t *colour_of, bool *seen) {
+    int w = gfx_sprite_w(SPR_DANCER), h = gfx_sprite_h(SPR_DANCER);
+    if (gfx_sprite_frames(sprite) != frames || gfx_sprite_w(sprite) != w || gfx_sprite_h(sprite) != h) {
+        return false;
+    }
+    for (int f = 0; f < frames; f++) {
+        if (!gfx_sprite_decode(SPR_DANCER, f, base_colour, base_alpha) ||
+            !gfx_sprite_decode(sprite, f, px_colour, px_alpha) || memcmp(base_alpha, px_alpha, (size_t)(w * h)) != 0) {
+            return false;
+        }
+        for (int p = 0; p < w * h; p++) {
+            if (!px_alpha[p]) {
+                continue;
+            }
+            uint8_t index = index_of(key_of(base_colour[p], base_alpha[p]));
+            if (!seen[index]) {
+                seen[index] = true;
+                colour_of[index] = (uint32_t)px_colour[p] << 8 | (uint32_t)((px_alpha[p] + 1) / 2);
+            } else if (colour_of[index] >> 8 != px_colour[p]) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static void add_dancers(void) {
+    static const group dancer = {SPR_DANCER, 0, 0, B_BAR, false, true, false};
+    static uint32_t hash[OVERLAY_DANCER_FRAMES];
+    for (int k = 0; k < OVERLAY_DANCER_KINDS; k++) {
+        for (int f = 0; f < OVERLAY_DANCER_FRAMES; f++) {
+            dancer_cells[k][f] = -1;
+        }
+    }
+    int frames = gfx_sprite_frames(SPR_DANCER), w = gfx_sprite_w(SPR_DANCER), h = gfx_sprite_h(SPR_DANCER);
+    if (frames < 1 || frames > OVERLAY_DANCER_FRAMES || w > PF_OVL_MAX_SIZE || h > PF_OVL_MAX_SIZE) {
+        return;
+    }
+    col_n = 0;
+    coarse = 0xFFFF;
+    if (!collect(&dancer, frames)) {
+        col_n = 0;
+        coarse = 0xC718;
+        if (!collect(&dancer, frames)) {
+            return;
+        }
+    }
+    /* numbered from the last entry down, so that they are free in most other banks too */
+    int colours = reduce(PF_OVL_COLOURS - bank_colours[B_BAR]);
+    for (int i = 0; i < col_n; i++) {
+        col[i].index = (uint8_t)(PF_OVL_COLOURS + 1 - col[i].index);
+    }
+    upload_palette(B_BAR);
+
+    int cells_before = cell_count;
+    uint32_t used_before = sheet_used;
+    for (int f = 0; f < frames; f++) {
+        if (!load_frame(&dancer, f, &w, &h)) {
+            continue;
+        }
+        uint32_t sum = 2166136261u;
+        bool empty = true;
+        for (int p = 0; p < w * h; p++) {
+            sum = (sum ^ (px_alpha[p] ? ((uint32_t)px_colour[p] << 8 | px_alpha[p]) + 1 : 0)) * 16777619u;
+            empty = empty && !px_alpha[p];
+        }
+        hash[f] = sum;
+        if (empty) { /* nothing to show: no cell */
+            continue;
+        }
+        for (int g = 0; g < f; g++) {
+            if (dancer_cells[0][g] >= 0 && hash[g] == sum) {
+                dancer_cells[0][f] = dancer_cells[0][g];
+                break;
+            }
+        }
+        if (dancer_cells[0][f] < 0) {
+            if (!add_frame(w, h, B_BAR, false, false)) { /* no room: no dancers */
+                cell_count = cells_before;
+                sheet_used = used_before;
+                for (int g = 0; g < frames; g++) {
+                    dancer_cells[0][g] = -1;
+                }
+                return;
+            }
+            dancer_cells[0][f] = (int16_t)(cell_count - 1);
+        }
+    }
+    bank_colours[B_BAR] = PF_OVL_COLOURS; /* taken from both ends now */
+
+    for (int k = 1; k < OVERLAY_DANCER_KINDS; k++) {
+        uint32_t colour_of[32];
+        bool seen[32] = {false};
+        if (!dancer_colours(SPR_DANCER_1 + k - 1, frames, colour_of, seen)) {
+            continue;
+        }
+        int bank = -1;
+        for (int b = 0; b < PF_OVL_BANKS; b++) {
+            if (bank_colours[b] + colours <= PF_OVL_COLOURS && (bank < 0 || bank_colours[b] < bank_colours[bank])) {
+                bank = b;
+            }
+        }
+        if (bank < 0) {
+            continue;
+        }
+        bank_colours[bank] = PF_OVL_COLOURS;
+        for (int i = 1; i <= PF_OVL_COLOURS; i++) {
+            if (seen[i]) {
+                pf_ovl_palette(bank, i, entry(colour_of[i] >> 8, colour_of[i] & 255));
+            }
+        }
+        for (int f = 0; f < frames && cell_count < PF_OVL_CELLS; f++) {
+            int from = dancer_cells[0][f];
+            for (int g = 0; g < f; g++) {
+                if (dancer_cells[0][g] == from) {
+                    dancer_cells[k][f] = dancer_cells[k][g];
+                    break;
+                }
+            }
+            if (dancer_cells[k][f] < 0 && from >= 0) { /* the same pixels, another bank */
+                tile_addr[cell_count] = tile_addr[from];
+                cell_dx[cell_count] = cell_dx[from];
+                cell_dy[cell_count] = cell_dy[from];
+                cell_w[cell_count] = cell_w[from];
+                cell_h[cell_count] = cell_h[from];
+                pf_ovl_cell(cell_count, tile_addr[from], cell_w[from], cell_h[from], false, false);
+                cell_bank[cell_count] = (uint8_t)bank;
+                dancer_cells[k][f] = (int16_t)cell_count++;
+            }
+        }
+    }
+}
+
+int overlay_dancer(int kind, int frame) {
+    if (!on || kind < 0 || kind >= OVERLAY_DANCER_KINDS || frame < 0 || frame >= OVERLAY_DANCER_FRAMES) {
+        return -1;
+    }
+    return dancer_cells[kind][frame] >= 0 ? dancer_cells[kind][frame] : dancer_cells[0][frame];
+}
+
 /* Ends every row of every cell after its last pixel, where the row has room for the
  * mark. The layer then spends no time on the empty right side of a round note, and
  * with notes piled up that is most of what there is to look at. A layer that does not
@@ -350,6 +503,8 @@ void overlay_init(void) {
         group_cell[i] = -1;
     }
     overlay_bar = overlay_bar_branch = -1;
+    memset(bank_colours, PF_OVL_COLOURS, sizeof bank_colours); /* until a bank is known to have room */
+    memset(dancer_cells, 0xFF, sizeof dancer_cells);
     if (!pf_ovl_supported()) {
         return;
     }
@@ -378,6 +533,7 @@ void overlay_init(void) {
     overlay_bar_branch = new_cell(1, 48, 0, 0, B_BAR, true, false);
     pf_ovl_palette(B_BAR, 1, entry((uint32_t)assets_cfg(CFG_BARLINE_COLOR, 0xFFFF), 16));
     pf_ovl_palette(B_BAR, 2, entry(RGB(255, 220, 0), 16));
+    bank_colours[B_BAR] = 2;
 
     for (int bank = 0; bank < PF_OVL_BANKS; bank++) {
         if (bank == B_BAR || (bank >= B_DIM && bank != B_SPLASH)) {
@@ -398,7 +554,7 @@ void overlay_init(void) {
                 break;
             }
         }
-        reduce();
+        bank_colours[bank] = (uint8_t)reduce(PF_OVL_COLOURS);
         upload_palette(bank);
         for (int i = 0; i < GROUPS; i++) {
             const group *g = &groups[i];
@@ -428,6 +584,7 @@ void overlay_init(void) {
             }
         }
     }
+    bank_colours[B_BURST2] = bank_colours[B_BURST]; /* the burst's second tint has its entries */
     /* Narrow pieces of the two drumroll bars, for the end of a bar that is not a whole
      * number of 48 px tiles long (a sprite cannot be cut to a width). */
     static const int piece_w[OVERLAY_ROLL_PIECES] = {24, 12, 6, 3};
@@ -457,6 +614,7 @@ void overlay_init(void) {
             overlay_roll_piece[big][k] = new_cell(piece_w[k], th, 0, cell_dy[tile], B_ROLL, true, false);
         }
     }
+    add_dancers();
     mark_row_ends();
     pf_ovl_sheet(0, sheet, sheet_used);
     pf_ovl_show(NULL, 0);
@@ -483,7 +641,12 @@ static int overlay_cell_of(int sprite, int frame) {
 static uint32_t list[LIST_MAX];
 static int list_n;
 
-void overlay_begin(void) { list_n = 0; }
+/* decorations: shown only where the frame's other sprites leave room in the layer's list */
+#define EXTRA_MAX 48
+static uint32_t extra[EXTRA_MAX];
+static int extra_n, extra_at; /* extra_at: how many sprites of the list lie behind them */
+
+void overlay_begin(void) { list_n = extra_n = extra_at = 0; }
 
 void overlay_add(int cell, int x, int y, bool dim) {
     if (!on || cell < 0 || cell >= cell_count || x <= -2 * PF_OVL_MAX_SIZE || x >= GFX_W ||
@@ -493,6 +656,7 @@ void overlay_add(int cell, int x, int y, bool dim) {
     if (list_n == LIST_MAX) { /* too many: the ones at the very back go */
         memmove(list, list + 1, (LIST_MAX - 1) * sizeof list[0]);
         list_n--;
+        extra_at -= extra_at > 0;
     }
     int bank = cell_bank[cell];
     if (dim && bank >= B_BURST && bank < B_BURST + DIM_BANKS) {
@@ -501,18 +665,46 @@ void overlay_add(int cell, int x, int y, bool dim) {
     list[list_n++] = PF_OVL_SPRITE(x + cell_dx[cell], y + cell_dy[cell], cell, bank);
 }
 
+void overlay_add_extra(int cell, int x, int y) {
+    if (!on || cell < 0 || cell >= cell_count || x <= -2 * PF_OVL_MAX_SIZE || x >= GFX_W ||
+        y <= -2 * PF_OVL_MAX_SIZE || y >= GFX_H || extra_n == EXTRA_MAX) {
+        return;
+    }
+    if (!extra_n) {
+        extra_at = list_n; /* in front of what was added so far, behind what follows */
+    }
+    extra[extra_n++] = PF_OVL_SPRITE(x + cell_dx[cell], y + cell_dy[cell], cell, cell_bank[cell]);
+}
+
 /* the layer wants the front sprite first, and takes 128 */
+int overlay_listed(void) { return list_n; }
+int overlay_extras(void) { return extra_n; }
+
+/* The layer wants the front sprite first, and takes 128. The frame's own sprites come
+ * first: decorations get what is left, the ones added last before the others. */
 void overlay_end(void) {
     static uint32_t out[PF_OVL_SPRITES];
     int n = list_n > PF_OVL_SPRITES ? PF_OVL_SPRITES : list_n;
+    int e = extra_n > PF_OVL_SPRITES - n ? PF_OVL_SPRITES - n : extra_n;
+    int front = list_n - extra_at, at = 0; /* sprites in front of the decorations */
     for (int i = 0; i < n; i++) {
-        out[i] = list[list_n - 1 - i];
+        if (i == front) {
+            for (int k = 0; k < e; k++) {
+                out[at++] = extra[extra_n - 1 - k];
+            }
+        }
+        out[at++] = list[list_n - 1 - i];
     }
-    pf_ovl_show(out, n);
+    if (front >= n) { /* nothing of the list lies behind them */
+        for (int k = 0; k < e; k++) {
+            out[at++] = extra[extra_n - 1 - k];
+        }
+    }
+    pf_ovl_show(out, at);
 }
 
 void overlay_clear(void) {
-    list_n = 0;
+    list_n = extra_n = extra_at = 0;
     if (on) {
         pf_ovl_show(NULL, 0);
     }

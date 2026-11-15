@@ -9,3 +9,8 @@ Anything else here was put there by hand for reference and is not needed to buil
 | `YataiDON/` | https://github.com/Yonokid/YataiDON at commit `309d7b55` (GPL-3.0) | behavioural reference; `tests/yatai/` links its parser and judge for the golden tests |
 | `openfpga-litex/` | https://github.com/agg23/openfpga-litex at `c21570d` (MIT) | reference copy of the upstream that `gateware/` was forked from |
 | `fonts/` | Noto Sans JP (OFL 1.1) | default font for the packer's glyph atlas |
+
+By hand: `yatai_skin/` has a few files of YataiDON's default skin, PyTaikoGreen
+(https://ese.tjadataba.se/Yonokid/PyTaikoGreen, branch `main`): the scripts and values
+the game's effects were taken from. YataiDON keeps much of its visible behaviour there,
+not in the engine.

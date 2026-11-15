@@ -85,6 +85,10 @@ Measured on the Pocket with the layer (a dense level 10 chart, auto-play, overla
 notes 0.6 ms; pixels 2,122 copied, 422 blended, 7,345 repaired. Before the layer the
 same kind of section took 14 to 17.5 ms.
 
+The notes flying to the soul and the dancers (`docs/video.md`) are sprites of the layer
+too. For the CPU they are a list of at most 37 more positions and some arithmetic: by
+count of operations well under 0.1 ms of a 16.7 ms frame. Not measured on a Pocket.
+
 Still drawn by the CPU and measured in the same session: the pause menu, redrawn every
 frame, 12.8 ms (now drawn once, on the background layer); the Go-Go splash,
 a visible dip (now on the sprite layer); song select while a

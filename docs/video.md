@@ -47,7 +47,8 @@ Consequences:
 The rule on the Pocket: draw a thing when it changes, not every frame.
 
 - **Sprite layer, every frame, no pixel work for the CPU:** notes, bar lines, note
-  names, the burst and the inner hit effect, the judgment text, the kusudama counter.
+  names, the burst and the inner hit effect, the judgment text, the kusudama counter,
+  the notes flying to the soul, the dancers.
 - **Background layer, on change:** gauge and soul (a judged note), the frame rate box
   and the overlay (twice a second), the lines of song select and of the settings.
 - **Frame, every frame:** drum flashes, score and combo numbers, the Go-Go flame, the
@@ -59,7 +60,7 @@ The rule on the Pocket: draw a thing when it changes, not every frame.
 game's use of it. At boot the pictures are copied from the library's sprites onto
 the layer's sheet (65,536 pixels of 5 bits), without their empty margins, each group
 with its own palette of 30 colours (more colours are merged, nearest first). The
-Taikojiro skin uses 62,482 of 73,728 pixels in 61 cells.
+Taikojiro skin uses 68,394 of 73,728 pixels in 77 cells.
 
 - Sprites are listed front first; the game adds them back to front and
   `overlay_end()` turns the list round.
@@ -71,8 +72,9 @@ Taikojiro skin uses 62,482 of 73,728 pixels in 61 cells.
   of time at about 35 notes on screen: the notes furthest right and the bar lines
   were then missing, and the last one drawn was cut off. That was reached by 18 of
   682 charts of a test library at scroll speed 1.0 and by 292 at 0.5. With the current
-  layer, all 684 songs of it played by auto-play at speed 0.5 (the slowest setting) stay
-  under the limit in the model; the busiest line needs 1608 of 1975 cycles. What is
+  layer, all 684 songs of it played by auto-play at speeds 0.5 (the slowest setting),
+  0.7 and 1.0 stay under the limit in the model; the busiest line needs 1902 of 1975
+  cycles (one chart at speed 1.0, with every note's name on the layer). What is
   left is the empty left side of a row: where the narrow top rows of the notes do not
   touch, each note still costs about 25 cycles.
 - The layer has no per-sprite alpha. A fade is full, half (a second palette bank
@@ -94,6 +96,48 @@ Taikojiro skin uses 62,482 of 73,728 pixels in 61 cells.
 - If the platform has no layer (a bitstream from before it) or a skin's pictures do
   not fit the sheet, `overlay_on()` is false and the game draws the same things into
   the frame, as described under "Piled-up notes". `--set overlay=0` on the desktop.
+
+## Flying notes and dancers
+
+Both follow YataiDON, whose logic for them is in its skin's scripts (`note_arc.lua`,
+`bg_objects/dancer.lua`, `background.lua`), and both exist only on the sprite layer:
+the CPU lists a few more sprites and draws nothing. Without the layer they are not
+shown.
+
+- **A note that was hit flies to the soul**, and so does every hit of a drumroll (a
+  note of the drum that was hit, big on a big roll) and a balloon that burst (as a big
+  don); a kusudama does not. The flight takes 31 frames of 16.67 ms along a quadratic
+  curve from the judge circle to the middle of the soul, bending towards a point half
+  way and above the higher end by 425/808 of the horizontal distance (YataiDON's 425 px
+  on a flight of 808 px). It is worked out once as 100 whole-pixel points. The
+  pictures are the lane's own note cells. Up to 32 at a time.
+- **Dancers** stand on the bottom edge, in five places evenly across the screen,
+  taken in the order middle, left of it, right of it, far left, far right. The first
+  comes 0.8 s into the scene; one more comes with the gauge at 20, 40, 60 and 80 % of
+  its length, all five are there as soon as the song is cleared, and the last one goes
+  again when the gauge falls below a step. A dancer plays the skin's "coming" row,
+  then dances the "normal" row on a clock all dancers share, and plays the "going" row
+  when it leaves. A row takes `DancerLoopBeats` beats of the current tempo; a tempo
+  change keeps every dancer's place in its row. They are hidden while the pause menu
+  or the profiler's box is open, which are in the same place.
+- On the sheet a dancer's pictures that are the same share a cell (Taikojiro's rows
+  repeat each other), and a place's own dancer (`dancer_2...`) is shown if it is the
+  default one in other colours: the same sheet pixels with a second palette. The
+  dancer colours are the last entries of palette banks that have them free (the bar
+  lines' bank for the default). The default skin's dancers take 5,912 sheet pixels.
+- They are decorations (`overlay_add_extra()`): the layer takes 128 sprites a frame, and
+  they only get the places the lane's sprites do not need, dancers before flying notes.
+  A frame that fills the list by itself is shown exactly as without them.
+- Measured in the model, all 684 songs of a test library by auto-play (which hits a
+  drumroll every frame: 31 notes in the air), at scroll speeds 0.5, 0.7 and 1.0: no
+  song goes over the line limit with or without them, and the busiest line of the
+  library is the same (1665, 1830 and 1902 of 1975 cycles). A song's own busiest line
+  rises by 26 cycles on average and by 152 at most. They had to give way in 16, 4 and
+  1 songs, in less than 0.1 % of the frames.
+- Left out: the soul's explosion picture of Taikojiro skins (`explosion_soul`, six
+  frames of 96 x 192 soft pixels: too large for the sheet, and about 13 ms a frame if
+  the CPU drew it), YataiDON's fireworks behind a big note and the rainbow behind a
+  balloon (the skin has no pictures for them).
 
 ## Lane flashes
 
@@ -170,7 +214,7 @@ made neighbours move against each other by a pixel.
 - Vertical note movement from complex `#SCROLL` values. The notes still load and
   are judged at YataiDON's times; they move horizontally only.
 - `#JPOSSCROLL` (judge circle moves). Parsed, not shown.
-- Dancers, mob, player characters, 2P images.
+- Mob, player characters, 2P images, the soul's explosion.
 
 ## Measurements
 
