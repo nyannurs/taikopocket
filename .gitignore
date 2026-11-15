@@ -24,3 +24,7 @@ Thumbs.db
 # Local working notes and the project brief: not for the repository
 /NOTES.private.md
 /taiko-pocket-prompt.md
+
+# Phone recordings: they carry the place and time they were made
+*.MOV
+*.mov
