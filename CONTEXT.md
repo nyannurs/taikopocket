@@ -159,13 +159,15 @@ What a code review found in the hardware, and two wishes, in one bitstream
 - `.data` is restored on every start (`crt0.S`, `link.ld`); button edges from before
   a reset are dropped.
 
+Since 0.2.0, in the game: charts with one route per branch point (only `#M`, then only
+`#N`) play through, because a section belongs to its own `#BRANCHSTART`
+(`docs/judge.md`, extensions); song rows show two arrows for a course with branches.
+
 ### Known and not done
 
 - Unused in the gateware: the CPU-fed audio path, the mono PCM path, three RTL files
   of the base (`sram.sv`, `data_loader.sv`, `wishbone.sv`), the LiteX generator under
   `litex/`. Left as they are.
-- Charts with one route per branch point (only `#M`, then only `#N`) play through:
-  a section belongs to its own `#BRANCHSTART` (`docs/judge.md`, extensions).
 - Two buttons of the same kind pressed in the same instant are one stroke on the
   Pocket and two on the desktop.
 - The Go-Go flame is drawn by the CPU every frame of Go-Go Time (3 to 4 ms). It was
