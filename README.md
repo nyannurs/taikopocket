@@ -1,5 +1,9 @@
 # Taiko Pocket
 
+## Gameplay
+
+https://github.com/user-attachments/assets/74343e08-5f3b-46c8-b1c7-6ec69580000d
+
 ## AI Disclaimer
 
 This software is built by iterating with Claude Code. I did not write a single line of code.
