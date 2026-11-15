@@ -70,6 +70,13 @@ the judge, which stays identical to YataiDON's.
 ### Extensions (not in YataiDON, off in the parity tests)
 
 - `#LEVELHOLD`: from that point on every decision keeps the current path.
+- A section belongs to its own `#BRANCHSTART`. Charts exist that define one route per
+  branch point (only `#M` at the first, only `#N` at the next, no `#BRANCHEND`) with
+  conditions that force exactly that route. YataiDON takes the first section left of
+  every route at each decision, so the first decision throws away the `#N` section of
+  the second branch point and the rest of the chart has no notes. Here a decision
+  uses and discards only the sections of its own branch point, and waits for the
+  first note of those.
 - Condition `s`: the score gained since the last `#SECTION` is compared with the
   thresholds.
 

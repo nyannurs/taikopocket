@@ -62,6 +62,7 @@ typedef struct {
     char cond;         /* TP_EV_BRANCH: 'p', 'r', 's', or 0 for anything else */
     int16_t list;      /* 0 = master, n = branch section n-1 */
     int16_t seq;
+    int32_t block;     /* TP_EV_BRANCH: which #BRANCHSTART, counted from 1 */
     float e_req, m_req; /* TP_EV_BRANCH */
     double bpm;         /* TP_EV_BPM */
     double judge_x, judge_y, delta_x, delta_y; /* TP_EV_JPOS */
@@ -76,6 +77,7 @@ typedef struct {
 /* One branch path between a #N/#E/#M and the next one (or #BRANCHEND). */
 typedef struct {
     uint8_t path; /* 0 normal, 1 expert, 2 master */
+    int32_t block; /* which #BRANCHSTART it belongs to, counted from 1 */
     int32_t first_note, note_count;   /* in tp_chart.branch */
     int32_t first_event, event_count; /* in tp_chart.events */
 } tp_section;

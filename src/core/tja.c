@@ -491,6 +491,7 @@ typedef struct {
     double scroll_x_modifier, scroll_y_modifier;
     int scroll_type;
     bool barline_display;
+    int branch_block; /* #BRANCHSTART commands seen so far */
     int list; /* current note list / timeline: 0 master, n = section n-1 */
     double index;
     tja_ints balloons;
@@ -764,6 +765,7 @@ static void handle_DELAY(parser_state *s, tp_str value) {
 }
 
 static void handle_BRANCHSTART(parser_state *s, tp_str value) {
+    s->branch_block++;
     s->start_branch_ms = s->current_ms;
     s->start_branch_bpm = s->bpm;
     s->start_branch_time_sig = s->time_signature;
@@ -786,6 +788,7 @@ static void handle_BRANCHSTART(parser_state *s, tp_str value) {
     tp_event proto;
     memset(&proto, 0, sizeof proto);
     proto.kind = TP_EV_BRANCH;
+    proto.block = s->branch_block;
     tp_str part[3];
     int parts = 0;
     for (size_t i = 0; i < value.n;) { /* std::getline(ss, part, ',') */
@@ -838,6 +841,7 @@ static void handle_path(parser_state *s, int path) {
     tp_section *sec = &c->sections[c->section_count];
     memset(sec, 0, sizeof *sec);
     sec->path = (uint8_t)path;
+    sec->block = s->branch_block;
     sec->first_note = c->branch_count;
     s->last_section[path] = c->section_count;
     s->list = ++c->section_count;

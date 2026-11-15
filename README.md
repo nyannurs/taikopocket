@@ -1,5 +1,11 @@
 # Taiko Pocket
 
+## AI Disclaimer
+
+This software is built by iterating with Claude Code. I did not write a single line of code, but I did set out what the game should be and how it should play, decided which features it needs, and tested everything I could on my own Analogue Pocket with my own library of charts. That much is human.
+
+## What is Taiko Pocket?
+
 A Taiko drum rhythm game for the **Analogue Pocket**. It plays song charts in the TJA
 format, the one used by Taikojiro and other PC simulators: you bring the songs, the
 Pocket plays them.

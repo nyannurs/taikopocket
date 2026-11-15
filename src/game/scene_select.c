@@ -121,6 +121,9 @@ static void draw_row(int r) {
         char buf[16];
         snprintf(buf, sizeof buf, "\xE2\x98\x85%d", s->level[c]); /* a star and the level */
         gfx_text(FONT_L, GFX_W - 16, y + 4, buf, course_colors[c], ALIGN_RIGHT, 0);
+        if (s->branch_mask >> c & 1) { /* this course has branches: the two arrows, as on its chip in the footer */
+            gfx_text(FONT_S, GFX_W - 36, y + 24, "\xE2\x86\x91\xE2\x86\x93", RGB(255, 200, 80), ALIGN_RIGHT, 0);
+        }
         const score_entry *best = score_find(s->chart_crc, c);
         gfx_sprite(SPR_CLEARMARK, crown_frame(best ? best->crown : CROWN_NONE), GFX_W - 28, y + 26);
     }

@@ -72,6 +72,7 @@ typedef struct {
     int score, total_drumroll;
     tp_gauge gauge;
     int judgeable_note_count;
+    int branch_block; /* the #BRANCHSTART whose decision is pending */
     double chart_end_ms;
     int base_score;
 

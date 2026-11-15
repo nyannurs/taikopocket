@@ -186,6 +186,26 @@ int main(void) {
     CHECK_EQ(j.current_branch, TP_BRANCH_NORMAL);
     CHECK_EQ(j.good_count, 0);
 
+    /* One route per branch point, and no #BRANCHEND (seen in the wild): only #M at the first
+     * #BRANCHSTART, only #N at the second, only #M at the third, with conditions that
+     * force exactly those. Every section must be played at its own branch point. */
+    static const char *ONE_ROUTE =
+        "BPM:120\nCOURSE:Oni\nLEVEL:8\n#START\n1111,\n1111,\n1111,\n"
+        "#BRANCHSTART p,-2,-1\n#M\n1111,\n1111,\n1111,\n"
+        "#BRANCHSTART p,101,101\n#N\n2222,\n2222,\n2222,\n"
+        "#BRANCHSTART p,-2,-1\n#M\n1212,\n1212,\n#END\n";
+    load_text(ONE_ROUTE, 3, false, true);
+    play(true, 0, 0);
+    CHECK_EQ(j.branch_decisions, 3);
+    CHECK_EQ(j.current_branch, TP_BRANCH_MASTER);
+    CHECK_EQ(j.good_count, 12 + 12 + 12 + 8);
+    CHECK_EQ(j.bad_count, 0);
+    CHECK(tp_judge_finished(&j));
+    /* as YataiDON does it, the first decision throws the #N section away with the routes not taken */
+    load_text(ONE_ROUTE, 3, false, false);
+    play(true, 0, 0);
+    CHECK(j.good_count < 12 + 12 + 12 + 8);
+
     /* #LEVELHOLD (extension) keeps the route of the second branch for the third */
     load_file("tests/data/songs/Basics/branch.tja", 3, false, true);
     for (double t = -3000; t < j.chart_end_ms + 3000; t += 1.0) {

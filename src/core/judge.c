@@ -234,12 +234,24 @@ static void handle_judge_entry(tp_judge *j, double ms_from_start, const tp_event
     }
     j->is_branch = true;
     j->branch_condition = entry->cond;
+    j->branch_block = entry->block;
 
     /* decided when the next section's first note comes on screen */
     double branch_condition_end_time = ms_from_start;
     for (int path = 2; path >= 0; path--) { /* branch_m, branch_e, branch_n */
-        if (j->path_head[path] < j->path_count[path]) {
-            const tp_section *sec = &j->chart->sections[j->path_sections[path][j->path_head[path]]];
+        int at = j->path_head[path];
+        if (j->extensions) {
+            /* extension: only a section of this #BRANCHSTART counts (see evaluate_branch);
+             * a route that has none here may have its next one much later */
+            while (at < j->path_count[path] && j->chart->sections[j->path_sections[path][at]].block < entry->block) {
+                at++;
+            }
+            if (at < j->path_count[path] && j->chart->sections[j->path_sections[path][at]].block != entry->block) {
+                continue;
+            }
+        }
+        if (at < j->path_count[path]) {
+            const tp_section *sec = &j->chart->sections[j->path_sections[path][at]];
             if (sec->note_count > 0) {
                 branch_condition_end_time = j->chart->branch[sec->first_note].load_ms;
                 break;
@@ -308,14 +320,39 @@ static void evaluate_branch(tp_judge *j, double current_ms) {
     j->branch_decisions++;
 
     int merged = -1;
-    if (j->path_head[chosen] < j->path_count[chosen]) {
-        merged = j->path_sections[chosen][j->path_head[chosen]];
-        j->path_head[chosen]++;
-        merge_branch_section(j, merged);
-    }
-    for (int path = 0; path < 3; path++) {
-        if (path != chosen && j->path_head[path] < j->path_count[path]) {
-            j->path_head[path]++;
+    if (j->extensions) {
+        /* Extension: a section belongs to its own #BRANCHSTART. A chart may define only one
+         * route at a branch point (only #M here, only #N at the next); YataiDON takes the
+         * first section left of every route at each decision and so throws away sections
+         * of later branch points. Here each route gives up only what belongs to this
+         * decision or to earlier ones. */
+        int block = j->branch_block; /* the #BRANCHSTART being decided (its event can be in the timeline twice) */
+        for (int path = 0; path < 3; path++) {
+            while (j->path_head[path] < j->path_count[path]) {
+                int s = j->path_sections[path][j->path_head[path]];
+                int at = j->chart->sections[s].block;
+                if (at > block) {
+                    break;
+                }
+                if (at == block && path == chosen) {
+                    merged = s;
+                }
+                j->path_head[path]++;
+            }
+        }
+        if (merged >= 0) {
+            merge_branch_section(j, merged);
+        }
+    } else {
+        if (j->path_head[chosen] < j->path_count[chosen]) {
+            merged = j->path_sections[chosen][j->path_head[chosen]];
+            j->path_head[chosen]++;
+            merge_branch_section(j, merged);
+        }
+        for (int path = 0; path < 3; path++) {
+            if (path != chosen && j->path_head[path] < j->path_count[path]) {
+                j->path_head[path]++;
+            }
         }
     }
     emit(j, TP_JE_BRANCH, NULL, 0, 0, 0, chosen);
