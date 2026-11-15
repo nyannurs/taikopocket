@@ -11,9 +11,11 @@
   used pixel for pixel: notes keep their size, full-width images are cropped (lane
   layers on the right so their labels stay, flashes on the left, backgrounds
   centred or bottom-right depending on where their label is).
-- The lane is 56 px high, the judge circle sits at x = 80 and a 4/4 bar at scroll 1.0
-  spans the 320 px to the right edge, the same proportion YataiDON uses (one bar per
-  lane length). Sixteenth notes overlap by about a third, as in Taikojiro's default.
+- The lane is 56 px high and the judge circle sits at x = 80. A 4/4 bar at scroll 1.0
+  is 345.6 px long, by YataiDON's formula: screen width + 82 px of a 1280 wide screen
+  - judge position (948 px at 1280 x 720 with the judge at 414). The lane is longer
+  than what the screen shows of it: a bar is 8 % more than the 320 px from the judge
+  circle to the right edge. Sixteenth notes are 21.6 px apart.
 
 The layout constants are at the top of `src/game/scene_game.c`.
 

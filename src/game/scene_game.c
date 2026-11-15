@@ -14,7 +14,11 @@
 #define LANE_CY (LANE_Y + LANE_H / 2)
 #define LANE_X 56       /* notes are clipped here, at the drum's right edge */
 #define JUDGE_X 80      /* centre of the judge circle */
-#define TRAVEL 320.0f   /* pixels a note moves in one 4/4 bar at scroll 1 */
+/* Pixels a note moves in one 4/4 bar at scroll 1: YataiDON's scroll_distance(), screen
+ * width + 82 px of a 1280 wide screen - judge position. 948 there, 345.6 here. The lane
+ * is that much longer than the part of it on the screen. */
+#define TRAVEL (GFX_W + 82.0f * GFX_W / 1280 - JUDGE_X)
+#define LANE_REACH (GFX_W - JUDGE_X) /* from the judge circle to the right edge of the screen */
 #define NOTE_HALF 24
 #define DRUM_X 4
 #define DRUM_Y (LANE_CY - 24)
@@ -166,7 +170,7 @@ static float px_per_ms(const tp_note *n) { return (float)(n->bpm / 240000.0 * n-
 
 static void visible_span(const tp_note *n, double *load, double *unload) {
     const tp_chart *c = &song.chart;
-    float right = TRAVEL + NOTE_HALF + 8, left = JUDGE_X + NOTE_HALF + 8;
+    float right = LANE_REACH + NOTE_HALF + 8, left = JUDGE_X + NOTE_HALF + 8;
     if (c->scroll_type != TP_NMSCROLL) {
         double per_beat = n->scroll_x * TRAVEL / 4;
         if (per_beat == 0) {

@@ -43,6 +43,10 @@ about the platform. Update it when something changes.
 - **Judge timing keeps YataiDON's 720p lane constants** (`TP_LANE_*` in `chart.h`),
   because the branch decision time depends on a note's load time. Rendering uses
   its own geometry.
+- **Scroll speed** is YataiDON's `scroll_distance()` (its fix of 2026-11-06): one 4/4
+  bar at scroll 1 is screen width + 82 px of a 1280 wide screen - judge position.
+  948 px there, 345.6 px here (`TRAVEL` in `scene_game.c`; it was 320, the form
+  before the fix).
 
 ## Game code map (`src/game`)
 
