@@ -73,7 +73,10 @@ counter are sprites of a hardware layer (`gateware/taiko/rtl/taiko_sprites.sv`) 
 the FPGA mixes into the picture on its way to the screen. The CPU writes a list of
 at most 128 positions per frame.
 
-Synthesis with the layer, version 3 (Quartus 21.1): 12,128 of 18,480 ALMs (66 %), 284 of
+Synthesis, version 4 (Quartus 21.1, with the larger hit sound memory): 12,303 of 18,480
+ALMs (67 %), 300 of 308 M10K blocks (97 %); worst setup slack +0.546 ns, worst hold
+slack +0.076 ns. Met. Block RAM is nearly used up.
+Version 3: 12,128 ALMs (66 %), 284 of
 308 M10K blocks (92 %), 25 DSP blocks; worst setup slack +0.531 ns, worst hold slack
 +0.068 ns. Met. (Version 2: 12,056 ALMs, +0.085 ns and +0.017 ns; the slack moves
 with the placement, not with the 72 ALMs.) All its memories are block RAM.

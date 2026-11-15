@@ -144,6 +144,8 @@ about the platform. Update it when something changes.
 
 ### Gateware version 4 (2026-11-14): simulated, not yet confirmed on a Pocket
 
+Built: timing met (setup +0.546 ns, hold +0.076 ns), 300 of 308 M10K blocks.
+
 What a code review found in the hardware, and two wishes, in one bitstream
 (`gateware/taiko/README.md`, "Versions"):
 - A don and a ka pressed in the same instant both sound (requests are counted).
@@ -162,6 +164,8 @@ What a code review found in the hardware, and two wishes, in one bitstream
 - Unused in the gateware: the CPU-fed audio path, the mono PCM path, three RTL files
   of the base (`sram.sv`, `data_loader.sv`, `wishbone.sv`), the LiteX generator under
   `litex/`. Left as they are.
+- Charts with one route per branch point (only `#M`, then only `#N`) play through:
+  a section belongs to its own `#BRANCHSTART` (`docs/judge.md`, extensions).
 - Two buttons of the same kind pressed in the same instant are one stroke on the
   Pocket and two on the desktop.
 - The Go-Go flame is drawn by the CPU every frame of Go-Go Time (3 to 4 ms). It was
