@@ -171,7 +171,7 @@ Since 0.2.0, in the game: charts with one route per branch point (only `#M`, the
 `#N`) play through, because a section belongs to its own `#BRANCHSTART`
 (`docs/judge.md`, extensions); song rows show two arrows for a course with branches.
 
-Since 0.3.0, in the game (not in a release yet): note names overlap instead of one being
+0.4.0 (2026-11-15, the bitstream of 0.3.0), in the game: note names overlap instead of one being
 left out; the scroll speed follows YataiDON's corrected formula; notes that were hit fly
 to the soul and dancers stand at the bottom (`docs/video.md`, "Flying notes and
 dancers"). Both are sprites of the layer and need no new bitstream. The dancers need a
