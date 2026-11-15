@@ -2,7 +2,7 @@
 
 ## AI Disclaimer
 
-This software is built by iterating with Claude Code. I did not write a single line of code, but I did set out what the game should be and how it should play, decided which features it needs, and tested everything I could on my own Analogue Pocket with my own library of charts. That much is human.
+This software is built by iterating with Claude Code. I did not write a single line of code.
 
 ## What is Taiko Pocket?
 
