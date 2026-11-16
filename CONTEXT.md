@@ -159,7 +159,7 @@ about the platform. Update it when something changes.
 - `docs/performance.md` has the measurements; what is left for the CPU per frame is
   mostly the HUD.
 
-### Gateware version 5 (2026-11-16): built, not yet seen on a Pocket
+### Gateware version 5 (2026-11-16): confirmed on a Pocket, released as 0.5.0
 
 Adds the fade register (`TK_FADE`): a multiplier on the picture after the sprite
 layer, taken over in the vertical blanking. The test bench checks levels 8, 3, 0 and
@@ -196,6 +196,10 @@ to the soul and dancers stand at the bottom (`docs/video.md`, "Flying notes and
 dancers"). Both are sprites of the layer and need no new bitstream. The dancers need a
 library packed with this version: an older library has no dancer pictures and shows
 none.
+
+0.5.0 (2026-11-16, gateware version 5): scene changes fade through black, the result
+screen takes no button for 3 s, and a chart ends with its last note rather than its
+last bar line (`docs/video.md` "Scene changes", `docs/judge.md`).
 
 ### Known and not done
 
