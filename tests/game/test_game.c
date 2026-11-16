@@ -14,6 +14,12 @@ static void frames(int n) {
     }
 }
 
+/* a scene change: the fade out, the switch and the fade in (10 + 1 + 10 frames), and a
+ * few frames for a screen that is drawn in pieces */
+#define SWITCH 40
+/* the result screen: its fade in, then 180 frames in which no button leaves it */
+#define RESULT_HOLD 200
+
 static void tap(uint32_t button) {
     host_button(button, true);
     host_frame();
@@ -116,7 +122,17 @@ static void play_selected(int course_moves, bool scripted) {
         }
     }
     CHECK(guard < 60 * 600);
-    frames(5);
+    frames(RESULT_HOLD);
+}
+
+static bool screen_black(void) {
+    const uint16_t *p = host_screen();
+    for (int i = 0; i < PF_SCREEN_W * PF_SCREEN_H; i++) {
+        if (p[i]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 int main(int argc, char **argv) {
@@ -134,11 +150,32 @@ int main(int argc, char **argv) {
     settings.show_fps = false; /* its number would differ between two captures of one screen */
     settings.auto_play = true;
     tap(PF_BTN_SELECT); /* through the settings and back: song select is drawn again, with the AUTO label */
-    frames(5);
+    frames(SWITCH);
     tap(PF_BTN_B);
-    frames(20); /* the screen is drawn in pieces over a few frames */
+    frames(SWITCH);
     uint32_t select_hash = screen_hash();
-    play_selected(0, false);
+    CHECK(!screen_black());
+    /* the first play, step by step: the song ends, the screen fades to black, the result
+     * screen fades in and ignores the buttons for a while */
+    tap(PF_BTN_A);
+    tap(PF_BTN_A);
+    last_result.score = 0xFFFFFFFF;
+    for (int guard = 0; last_result.score == 0xFFFFFFFF && guard < 60 * 600; guard++) {
+        host_frame();
+        watch_extras();
+    }
+    CHECK(last_result.score != 0xFFFFFFFF);
+    CHECK(!screen_black());
+    frames(11); /* the fade out: 10 frames, then one frame of black */
+    CHECK(screen_black());
+    frames(30);
+    CHECK(!screen_black());
+    uint32_t result_hash = screen_hash();
+    tap(PF_BTN_A); /* too early: still the result screen */
+    frames(SWITCH);
+    CHECK_EQ(screen_hash(), result_hash);
+    frames(RESULT_HOLD);
+    CHECK(screen_hash() != result_hash); /* the hint line has come */
     CHECK(last_result.auto_play);
     CHECK_EQ(last_result.bad, 0);
     CHECK_EQ(last_result.ok, 0);
@@ -153,7 +190,7 @@ int main(int argc, char **argv) {
     CHECK(most_flying >= 2);
     CHECK_EQ(most_dancers, 5);
     tap(PF_BTN_A); /* back to song select */
-    frames(20);
+    frames(SWITCH);
     CHECK_EQ(screen_hash(), select_hash); /* same screen as before the play */
 
     /* --- the same chart by a player whose presses are stamped at the exact samples --- */
@@ -169,7 +206,7 @@ int main(int argc, char **argv) {
 
     /* back in song select, the best play's window comes up when the cursor rests, and goes when it moves */
     tap(PF_BTN_A);
-    frames(30);
+    frames(SWITCH);
     uint32_t rested = screen_hash();
     frames(60);
     CHECK(screen_hash() != rested);
@@ -188,13 +225,13 @@ int main(int argc, char **argv) {
 
     /* a player whose presses arrive 60 ms late is all GOOD again once the input offset says so */
     tap(PF_BTN_A);
-    frames(10);
+    frames(SWITCH);
     settings.input_offset_ms = 60;
     play_selected(0, true); /* perfect_player() delays its presses by the setting */
     CHECK_EQ(last_result.good, 34);
     settings.input_offset_ms = 0;
     tap(PF_BTN_A);
-    frames(10);
+    frames(SWITCH);
 
     /* --- "Branch Test": a perfect player is sent to the master route --- */
     tap(PF_BTN_DOWN);
@@ -203,23 +240,23 @@ int main(int argc, char **argv) {
     CHECK_EQ(song.judge.branch_decisions, 3);
     CHECK_EQ(song.judge.current_branch, TP_BRANCH_MASTER);
     tap(PF_BTN_A);
-    frames(10);
+    frames(SWITCH);
     /* ... and someone who never hits stays on the normal route and fails */
     play_selected(0, false);
     CHECK_EQ(last_result.good, 0);
     CHECK_EQ(song.judge.current_branch, TP_BRANCH_NORMAL);
     CHECK(!last_result.cleared);
     tap(PF_BTN_A);
-    frames(10);
+    frames(SWITCH);
 
     /* --- the settings give the cursor back where it was: a song further down, a folder further down --- */
     tap(PF_BTN_DOWN);
     frames(10);
     uint32_t place = screen_hash();
     tap(PF_BTN_SELECT);
-    frames(10);
+    frames(SWITCH);
     tap(PF_BTN_B);
-    frames(20);
+    frames(SWITCH);
     CHECK_EQ(screen_hash(), place);
     tap(PF_BTN_UP);
     tap(PF_BTN_B); /* the folder list */
@@ -227,9 +264,9 @@ int main(int argc, char **argv) {
     frames(10);
     place = screen_hash();
     tap(PF_BTN_SELECT);
-    frames(10);
+    frames(SWITCH);
     tap(PF_BTN_B);
-    frames(20);
+    frames(SWITCH);
     CHECK_EQ(screen_hash(), place);
     tap(PF_BTN_UP);
     tap(PF_BTN_A); /* into the first folder again, at the song it was left at */
@@ -243,7 +280,7 @@ int main(int argc, char **argv) {
         CHECK_EQ(last_result.bad, 0);
         CHECK(last_result.good > 0);
         tap(PF_BTN_A);
-        frames(10);
+        frames(SWITCH);
     }
 
     /* --- pause, retry and quit --- */
@@ -269,11 +306,11 @@ int main(int argc, char **argv) {
     CHECK_NEAR(song_now_ms(), paused_again, 0.001);
     tap(PF_BTN_UP); /* wraps to "Back to song select" */
     tap(PF_BTN_A);
-    frames(10);
+    frames(SWITCH);
 
     /* --- settings and calibration screens open and close --- */
     tap(PF_BTN_SELECT);
-    frames(5);
+    frames(SWITCH);
     for (int i = 0; i < 5; i++) {
         tap(PF_BTN_DOWN);
     }
@@ -284,7 +321,7 @@ int main(int argc, char **argv) {
         frames(30);
     }
     tap(PF_BTN_START);
-    frames(5);
+    frames(SWITCH);
     CHECK(settings.input_offset_ms >= -250 && settings.input_offset_ms <= 250);
     /* --- statistics: the scripted play was counted, the screen opens and closes --- */
     CHECK(stats.don_hits + stats.ka_hits > 30);
@@ -293,13 +330,13 @@ int main(int argc, char **argv) {
         tap(PF_BTN_DOWN); /* from "Measure the input offset" to "Statistics" */
     }
     tap(PF_BTN_A);
-    frames(5);
+    frames(SWITCH);
     uint32_t stats_hash = screen_hash();
     tap(PF_BTN_B);
-    frames(5);
+    frames(SWITCH);
     CHECK(screen_hash() != stats_hash);
     tap(PF_BTN_B);
-    frames(10);
+    frames(SWITCH);
 
     /* --- the save keeps settings and statistics, and still reads a version 1 file --- */
     uint32_t hits = stats.don_hits + stats.ka_hits;

@@ -34,6 +34,7 @@ static int option_count;
 static uint8_t save[1 << 16];
 static bool save_valid;
 static uint64_t fake_us;
+static int fade_level = PF_FADE_FULL;
 
 bool host_open_library(const char *path) {
     snprintf(base, sizeof base, "%s", path);
@@ -57,9 +58,13 @@ void host_frame(void) {
     memcpy(shown, fb[fb_index], sizeof shown);
     ovl_sprites(ovl_pending, ovl_pending_count);
     ovl_compose(shown);
+    ovl_fade(shown, fade_level);
     fb_index ^= 1;
     sm_render(audio, SAMPLES_PER_FRAME);
 }
+
+bool pf_fade_supported(void) { return true; }
+void pf_fade(int level) { fade_level = level; }
 
 static void push(uint32_t button, bool down, int64_t counter) {
     unsigned next = (fifo_head + 1) % 256;

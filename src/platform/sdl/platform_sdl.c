@@ -108,12 +108,17 @@ void pf_ovl_show(const uint32_t *sprites, int count) {
 }
 
 static int ovl_frames, ovl_frames_over, ovl_worst, ovl_worst_frame, ovl_first_over; /* for --set ovlstat=1 */
+static int fade_level = PF_FADE_FULL;
+
+bool pf_fade_supported(void) { return true; }
+void pf_fade(int level) { fade_level = level; }
 
 /* what the screen shows for the frame just drawn */
 static void compose_shown(void) {
     memcpy(shown, fb[fb_index], sizeof shown);
     ovl_sprites(ovl_pending, ovl_pending_count);
     ovl_compose(shown);
+    ovl_fade(shown, fade_level);
     int peak = ovl_peak();
     ovl_frames++;
     ovl_frames_over += peak > OVL_LINE_CYCLES;

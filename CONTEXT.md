@@ -47,10 +47,19 @@ about the platform. Update it when something changes.
   bar at scroll 1 is screen width + 82 px of a 1280 wide screen - judge position.
   948 px there, 345.6 px here (`TRAVEL` in `scene_game.c`; it was 320, the form
   before the fix).
+- **Scene changes fade through black** (10 frames out, 10 in; `docs/video.md`, "Scene
+  changes"). The fade is a register of the gateware (`TK_FADE`, version 5) that scales
+  the picture on its way out, so it costs the CPU nothing; the desktop scales the
+  composed frame. Buttons are not seen during a fade, and the result screen takes none
+  for 3 seconds. On a bitstream before version 5 scenes change at once, as before.
+- **The end of a chart is its last note, not its last bar line** (`judge.c`), the one
+  deliberate difference from YataiDON's judge: a chart ending in empty measures at a
+  tempo near zero went on for an hour (`docs/judge.md`).
 
 ## Game code map (`src/game`)
 
-- `app.c` scene switching, input (edges + auto-repeat), boot scene, hit-sound loading.
+- `app.c` scene switching with the fade through black, input (edges + auto-repeat),
+  boot scene, hit-sound loading.
 - `gfx.c` renderer: background layer + dirty rectangles, RLE sprites, glyph text.
 - `library.c` library boot region and offset reads. `song.c` chart load, audio
   stream into the platform's music ring, preview. `settings.c` settings + scores.
@@ -150,7 +159,15 @@ about the platform. Update it when something changes.
 - `docs/performance.md` has the measurements; what is left for the CPU per frame is
   mostly the HUD.
 
-### Gateware version 4 (2026-11-14): simulated, not yet confirmed on a Pocket
+### Gateware version 5 (2026-11-16): simulated, not yet built or seen on a Pocket
+
+Adds the fade register (`TK_FADE`): a multiplier on the picture after the sprite
+layer, taken over in the vertical blanking. The test bench checks levels 8, 3, 0 and
+15 against the model and that a value over 16 is the full picture. No memory added;
+three small multipliers in the video clock. The firmware calls a bitstream below 5
+"Old bitstream" in the settings and runs without the fade on it.
+
+### Gateware version 4 (2026-11-14): confirmed on a Pocket in 0.3.0 and 0.4.0
 
 Built: timing met (setup +0.546 ns, hold +0.076 ns), 300 of 308 M10K blocks.
 

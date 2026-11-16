@@ -30,6 +30,12 @@ A course with `LEVEL:0` (or none) is judged and gauged as Oni level 10, as in Ya
   100 each; it bursts at its `BALLOON` count. **Kusudama:** as a balloon.
   A balloon or kusudama without a count needs 1 hit.
 - Rolls and balloons do not add combo. A burst balloon does not either.
+- **The end of the chart** (`chart_end_ms`, after which the game waits 2 seconds and
+  goes to the result screen) is the time of its last note. YataiDON counts bar lines
+  too, which is the one place this judge differs: a chart that ends in empty measures
+  at a tempo near zero (four bars at 0.47 BPM after the last note, a trick that holds
+  the last picture of the lane; such charts exist) would otherwise go on for an hour
+  after the music. Bar lines take no part in any judgment, so the replays still match.
 
 ## Score (shinuchi only)
 

@@ -149,8 +149,10 @@ void pf_debounce(uint32_t ms);
 
 bool pf_ovl_supported(void);
 /* 0: none. 3 knows PF_OVL_ROW_END and passes over pixels that are drawn already, so
- * that a line has time for a whole list of piled-up notes; 2 runs out at about 35. */
-#define PF_OVL_VERSION 3
+ * that a line has time for a whole list of piled-up notes; 2 runs out at about 35.
+ * 5 is the first with the fade (gateware/taiko/README.md, "Versions"): the game
+ * calls a bitstream below this old. */
+#define PF_OVL_VERSION 5
 int pf_ovl_version(void);
 void pf_ovl_sheet(uint32_t addr, const uint8_t *pixels, uint32_t count);
 void pf_ovl_palette(int bank, int index, uint32_t entry);
@@ -166,6 +168,16 @@ void pf_ovl_show(const uint32_t *sprites, int count);
  * still hold 60 fps. Effects that need more are left out when the CPU would have to
  * draw them. Desktop: no limit in practice. */
 uint32_t pf_blend_budget(void);
+
+/* ---- fade ----
+ * The whole picture, sprites included, is shown at `level` sixteenths of its
+ * brightness (PF_FADE_FULL: as drawn, 0: black), from the next frame on and until
+ * the next call. The Pocket's FPGA does it on the picture's way to the screen; a
+ * bitstream from before it shows every frame as drawn, and pf_fade_supported() says
+ * so. */
+#define PF_FADE_FULL 16
+bool pf_fade_supported(void);
+void pf_fade(int level);
 
 /* ---- persistence (settings, scores). May be unsupported. ---- */
 bool pf_save_supported(void);

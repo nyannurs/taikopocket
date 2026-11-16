@@ -91,6 +91,8 @@ enum {
     TK_HIT_LEN = 0x27,     /* W   its samples (0: nothing to play) */
     TK_HIT_STEP = 0x28,    /* W   its 16.16 playback rate */
     TK_HIT_BASE = 0x29,    /* W   its first sample in the memory. Reads the memory's size in samples. */
+    /* version 5 */
+    TK_FADE = 0x2A,        /* RW  the picture, sprites included, times this / 16 (0..16; 16 after reset) */
 };
 #define TK_CTRL_STREAM 1u   /* music comes from the streamer, not from the CPU's audio FIFO writes */
 #define TK_CTRL_RUN 2u

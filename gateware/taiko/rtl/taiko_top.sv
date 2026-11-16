@@ -77,6 +77,7 @@ module taiko_top #(
   reg [16:0] ovl_addr = 0;
   reg [31:0] ovl_data = 0;
   reg [ 9:0] ovl_clip_x0 = 0, ovl_clip_x1 = 10'd400;
+  reg [ 4:0] fade = 5'd16;  // the picture, sprites included, times fade / 16 (version 5)
   reg [15:0] gain = 16'd256, vol_music = 16'd256, vol_hits = 16'd256;
   reg [47:0] start_pos = 0;
   reg [31:0] lead_in = 0, skip = 0, ring_base = 0, ring_bytes = 0, fed = 0;
@@ -192,6 +193,7 @@ module taiko_top #(
             ovl_data <= wbs_dat_w;
           end
           6'h25: {ovl_clip_x1, ovl_clip_x0} <= {wbs_dat_w[25:16], wbs_dat_w[9:0]};
+          6'h2A: fade <= wbs_dat_w[4] ? 5'd16 : wbs_dat_w[4:0];
           6'h15: don_mask <= wbs_dat_w[15:0];
           6'h16: ka_mask <= wbs_dat_w[15:0];
           6'h20: bridge_offset_hi <= wbs_dat_w[15:0];
@@ -204,10 +206,12 @@ module taiko_top #(
           6'h21: wbs_dat_r <= {20'd0, debounce};
           // 31:24: version of this block (2: pixel doubling, cell addresses in 2 px, 73728 px sheet;
           //        3: sheet value 31 ends a row, pixels that are drawn already are skipped;
-          //        4: four hit sound slots, bit 2 here, address bit 16 in TK_OVL_ADDR)
+          //        4: four hit sound slots, bit 2 here, address bit 16 in TK_OVL_ADDR;
+          //        5: the fade register)
           // bit 2: the sprite list being drawn from (bit 1 once the frame after the write has begun)
-          6'h22: wbs_dat_r <= {8'd4, 8'd0, ovl_count, 5'd0, ovl_page_shown, ovl_page, ovl_enable};
+          6'h22: wbs_dat_r <= {8'd5, 8'd0, ovl_count, 5'd0, ovl_page_shown, ovl_page, ovl_enable};
           6'h26: wbs_dat_r <= {30'd0, hit_slot};
+          6'h2A: wbs_dat_r <= {27'd0, fade};
           6'h29: wbs_dat_r <= HIT_DEPTH;
           6'h03: wbs_dat_r <= {16'd0, gain};
           6'h04: wbs_dat_r <= {16'd0, vol_music};
@@ -241,6 +245,8 @@ module taiko_top #(
 
   // ---- sprite layer ------------------------------------------------------------------------
   wire ovl_page_shown;
+  wire [23:0] spr_rgb;  // the picture with the sprites on it, before the fade
+  wire spr_de, spr_hs, spr_vs;
   taiko_sprites sprite_layer (
       .clk_sys   (clk_sys),
       .mem_wr    (ovl_wr),
@@ -258,11 +264,43 @@ module taiko_top #(
       .de_in     (vid_de_in),
       .hs_in     (vid_hs_in),
       .vs_in     (vid_vs_in),
-      .rgb_out   (vid_rgb_out),
-      .de_out    (vid_de_out),
-      .hs_out    (vid_hs_out),
-      .vs_out    (vid_vs_out)
+      .rgb_out   (spr_rgb),
+      .de_out    (spr_de),
+      .hs_out    (spr_hs),
+      .vs_out    (spr_vs)
   );
+
+  // ---- fade ----------------------------------------------------------------------------------
+  // The whole picture, sprites included, times fade / 16: the game fades a scene out and
+  // the next one in without touching a pixel. The level crosses into the video clock as a
+  // whole word and is taken over in the vertical blanking, so a frame is one brightness.
+  wire [4:0] fade_vid;
+  taiko_cdc_word #(.WIDTH(5)) fade_to_vid (.clk(clk_vid), .d(fade), .q(fade_vid));
+  reg [4:0] fade_now = 5'd16;
+  reg spr_vs_1 = 0;
+  reg [23:0] fade_rgb = 0;
+  reg fade_de = 0, fade_hs = 0, fade_vs = 0;
+
+  function automatic [7:0] dim(input [7:0] c, input [4:0] k);
+    reg [12:0] p;
+    begin
+      p   = c * k;
+      dim = p[11:4];
+    end
+  endfunction
+
+  always @(posedge clk_vid) begin
+    spr_vs_1 <= spr_vs;
+    if (spr_vs && !spr_vs_1) fade_now <= fade_vid;
+    fade_rgb <= {dim(spr_rgb[23:16], fade_now), dim(spr_rgb[15:8], fade_now), dim(spr_rgb[7:0], fade_now)};
+    fade_de  <= spr_de;
+    fade_hs  <= spr_hs;
+    fade_vs  <= spr_vs;
+  end
+  assign vid_rgb_out = fade_rgb;
+  assign vid_de_out  = fade_de;
+  assign vid_hs_out  = fade_hs;
+  assign vid_vs_out  = fade_vs;
 
   // ---- streamer ----------------------------------------------------------------------------
   wire [31:0] stream_data;

@@ -267,5 +267,12 @@ int main(void) {
     CHECK_EQ(j.good_count, j.judgeable_note_count);
     CHECK(j.total_drumroll > 0);
     CHECK(tp_gauge_rainbow(&j.gauge));
+
+    /* --- the chart ends with its last note, not with bar lines that come after it: a
+     * chart with empty measures at a tempo near zero after its last note ended an hour
+     * after the music --- */
+    load_text("BPM:120\nCOURSE:Oni\nLEVEL:8\n#START\n1111,\n#BARLINEOFF\n#BPMCHANGE 0.5\n,\n,\n,\n#END\n", 3, false, false);
+    CHECK_EQ(j.judgeable_note_count, 4);
+    CHECK_NEAR(j.chart_end_ms, 1500.0, 0.001);
     TEST_MAIN_END;
 }

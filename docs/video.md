@@ -54,6 +54,22 @@ The rule on the Pocket: draw a thing when it changes, not every frame.
 - **Frame, every frame:** drum flashes, score and combo numbers, the Go-Go flame, the
   roll and balloon counters, the cursor of song select.
 
+## Scene changes
+
+Every change of scene (song select to the song, the song to the result screen and
+back, the settings and their screens) goes through black: the old scene fades out
+over 10 frames, the new one fades in over 10 (`app_frame()` in `src/game/app.c`). A
+retry stays inside the song scene and does not fade. The fade is the gateware's: the
+FPGA scales the picture, sprites included, on its way to the screen (`TK_FADE`,
+gateware version 5), and the CPU writes one register per frame. The desktop and the
+test platform scale the composed frame in software. A bitstream from before version
+5 shows no fade and changes scenes at once.
+
+While a fade runs no button is seen, and the old scene is drawn but not updated.
+The result screen takes no button for its first 3 seconds, and shows the line that
+names the buttons only then: someone still drumming when a song ends does not skip
+past the score.
+
 ## Sprite layer
 
 `src/platform/platform.h` describes it (`pf_ovl_*`); `src/game/overlay.c` is the

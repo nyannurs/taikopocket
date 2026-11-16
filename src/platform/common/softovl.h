@@ -34,6 +34,8 @@ void ovl_line(int y, uint32_t out[OVL_W]);
 uint32_t ovl_mix888(uint32_t entry, uint32_t rgb);
 /* The layer over a whole RGB565 frame, in place. */
 void ovl_compose(uint16_t *frame);
+/* The fade stage after it: every channel times level / 16 (16: unchanged, 0: black). */
+void ovl_fade(uint16_t *frame, int level);
 
 /* For tests: the model's whole state to a file and back, and a look at its parts. */
 bool ovl_state_save(const char *path);

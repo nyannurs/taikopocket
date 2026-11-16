@@ -66,7 +66,8 @@ On the Pocket: openFPGA, then Taiko Pocket.
 
 In song select, **A** opens a folder and picks a song, **B** goes back, **L** and **R**
 jump a page, **X** picks a random song. Rest on a song you have played and a small
-window shows your best result.
+window shows your best result. The result screen takes no button for its first three
+seconds, so drumming on after the last note does not skip past the score.
 
 The settings have the scroll speed, volumes, timing offsets with a calibration, button
 layouts, and three modifiers that can be combined: invisible notes (Doron), reversed

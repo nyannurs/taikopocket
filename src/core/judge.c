@@ -180,7 +180,12 @@ void tp_judge_load(tp_judge *j, const tp_chart *c, int difficulty, int level, bo
         } else if (note->type != TP_BARLINE) {
             lane_push(&j->other, note);
         }
-        j->chart_end_ms = fmax(j->chart_end_ms, note->hit_ms);
+        /* The end of the chart is its last note. YataiDON counts bar lines too, and a
+         * chart that ends in empty measures at a tempo near zero (a trick that holds
+         * the last picture of the lane) would then go on for an hour after the music. */
+        if (note->type != TP_BARLINE) {
+            j->chart_end_ms = fmax(j->chart_end_ms, note->hit_ms);
+        }
     }
     int gauge_total_notes = 0;
     for (int i = 0; i < c->master_count; i++) {
@@ -197,7 +202,9 @@ void tp_judge_load(tp_judge *j, const tp_chart *c, int difficulty, int level, bo
         }
         for (int i = 0; i < sec->note_count; i++) {
             const tp_note *note = &c->branch[sec->first_note + i];
-            j->chart_end_ms = fmax(j->chart_end_ms, note->hit_ms);
+            if (note->type != TP_BARLINE && !tp_note_unplayable(note, c->scroll_type, audio_end_ms)) {
+                j->chart_end_ms = fmax(j->chart_end_ms, note->hit_ms);
+            }
             if (sec->path == 2 && note->type >= TP_DON && note->type <= TP_KAT_L) {
                 gauge_total_notes++; /* the gauge counts the master route */
             }

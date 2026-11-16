@@ -145,6 +145,7 @@ runs on older bitstreams without the rest.
 | 2 | pixel doubling, cell addresses in pairs of pixels, 73,728 pixel sheet |
 | 3 | row end mark, pixels that are drawn already are passed over |
 | 4 | four hit sounds; both drums at once; `TK_OVL_CTRL` bit 2 tells which sprite list is on screen; sheet address bit 16; settings cross into the audio clock as whole words |
+| 5 | `TK_FADE`: the picture, sprites included, leaves at 0 to 16 sixteenths of its brightness (scene changes fade without CPU work); the level is taken over in the vertical blanking |
 
 ## Registers
 

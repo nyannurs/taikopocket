@@ -13,7 +13,28 @@ uint32_t app_frame_count;
 static const scene *current, *pending;
 static int repeat_timer;
 
+/* Scenes change through black: the old one fades out over FADE_FRAMES frames, the new
+ * one fades in over as many. The platform dims the picture on its way to the screen,
+ * so the CPU does no more than it does without the fade. While a fade runs, buttons
+ * are not seen: someone still drumming when a song ends does not skip through the
+ * result screen, and a press meant for one screen does not land on the next. The
+ * old scene is drawn but not updated during its fade out: it has already asked to
+ * leave, and updating it again could make it ask twice. Without a platform fade
+ * (an old bitstream) the change is immediate, as it was. */
+#define FADE_FRAMES 10
+static int fade = FADE_FRAMES; /* 0: black .. FADE_FRAMES: the picture as drawn */
+static bool fade_on, fade_known;
+
 void app_goto(const scene *next) { pending = next; }
+bool app_changing(void) { return pending != NULL || fade < FADE_FRAMES; }
+
+static void fade_set(int level) {
+    static int shown = FADE_FRAMES;
+    if (level != shown) {
+        shown = level;
+        pf_fade(level * PF_FADE_FULL / FADE_FRAMES);
+    }
+}
 
 static void collect_input(void) {
     uint32_t before = in.held;
@@ -201,16 +222,36 @@ void app_init(void) {
 void app_frame(void) {
     prof_frame_start();
     collect_input();
-    if (pending) {
+    if (!fade_known) {
+        fade_known = true;
+        fade_on = pf_fade_supported();
+        fade = fade_on ? 0 : FADE_FRAMES; /* the first scene fades in from black */
+    }
+    bool between = false; /* a fade is running: no buttons, and the old scene stands still */
+    if (pending && fade > 0 && fade_on) {
+        fade--;
+        between = true;
+    } else if (pending) {
         current = pending;
         pending = NULL;
         gfx_clip_reset();
         gfx_bg_strip(0, 0, 0, 0, NULL);
         overlay_clear(); /* a scene that uses the sprite layer fills it every frame */
         current->enter();
+        between = fade < FADE_FRAMES;
+    } else if (fade < FADE_FRAMES) {
+        fade++;
+        between = true;
+    }
+    fade_set(fade);
+    if (between) {
+        in.pressed = in.repeat = 0;
+        in.event_count = 0;
     }
     prof_mark(PROF_LOGIC);
-    current->update();
+    if (!pending) {
+        current->update();
+    }
     /* the frame rate, out of the way of each screen: top left over the song, bottom right in the menus */
     prof_show(settings.show_fps && current != &scene_boot, current == &scene_game);
     prof_mark(PROF_REPAIR);

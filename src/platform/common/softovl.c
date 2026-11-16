@@ -219,3 +219,15 @@ void ovl_compose(uint16_t *frame) {
         }
     }
 }
+
+void ovl_fade(uint16_t *frame, int level) {
+    if (level >= 16) {
+        return;
+    }
+    level = level < 0 ? 0 : level;
+    for (int i = 0; i < OVL_W * OVL_H; i++) {
+        uint32_t c = frame[i];
+        frame[i] = (uint16_t)(((c >> 11) * (uint32_t)level >> 4) << 11 | (((c >> 5) & 63) * (uint32_t)level >> 4) << 5 |
+                              ((c & 31) * (uint32_t)level >> 4));
+    }
+}

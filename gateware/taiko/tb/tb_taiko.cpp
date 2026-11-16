@@ -37,7 +37,7 @@ enum { R_ID, R_CTRL, R_CMD, R_GAIN, R_VOL_MUSIC, R_VOL_HITS, R_POS_LO, R_POS_HI,
        R_RING_BYTES, R_FED, R_CONSUMED, R_FORMAT, R_HIT_ADDR, R_HIT_DATA, R_HIT_LEN0, R_HIT_LEN1, R_HIT_STEP0,
        R_HIT_STEP1, R_DON_MASK, R_KA_MASK, R_COUNTER_LO, R_COUNTER_HI, R_CLOCK_POS_LO, R_CLOCK_POS_HI, R_STATUS,
        R_EVENT, R_EVENT_TIME, R_KEYS, R_VIDEO, R_BRIDGE_HI, R_DEBOUNCE, R_OVL_CTRL, R_OVL_ADDR, R_OVL_DATA,
-       R_OVL_CLIP, R_HIT_SLOT, R_HIT_LEN, R_HIT_STEP, R_HIT_BASE };
+       R_OVL_CLIP, R_HIT_SLOT, R_HIT_LEN, R_HIT_STEP, R_HIT_BASE, R_FADE };
 enum { CTRL_STREAM = 1, CTRL_RUN = 2, CTRL_FINISHED = 4, CTRL_HIT_AUTO = 8 };
 enum { CMD_BEGIN = 1, CMD_DON = 2, CMD_KA = 4, CMD_LATCH = 8, CMD_CLEAR = 16, CMD_HIT2 = 32, CMD_HIT3 = 64 };
 
@@ -679,7 +679,7 @@ static void test_sprites() {
     }
     printf("  %d pixels changed by sprites, %d of them translucent\n", covered, mixed);
     CHECK(covered > 20000 && mixed > 3000, "the test picture has too few sprite pixels to mean anything");
-    CHECK((s.rd(R_OVL_CTRL) >> 24) == 4, "the block's version reads %u", s.rd(R_OVL_CTRL) >> 24);
+    CHECK((s.rd(R_OVL_CTRL) >> 24) == 5, "the block's version reads %u", s.rd(R_OVL_CTRL) >> 24);
 
     // 1b. the end of the sheet: a cell in its last pixels (beyond 16 address bits)
     {
@@ -811,6 +811,41 @@ static void test_sprites() {
     s.wr(R_OVL_CTRL, 0);
     s.run_frames(2);
     CHECK(ovl_mismatches(s, "off") == 0, "the picture is changed with the layer off");
+
+    // 4. the fade: every channel of every pixel times level / 16, sprites included; a
+    // whole frame has one level; 16 after reset and for any larger value
+    CHECK(s.rd(R_FADE) == 16, "the fade reads %u after reset", s.rd(R_FADE));
+    auto faded_mismatches = [&](int level, const char* what) {
+        static uint32_t line[OVL_W];
+        int wrong = 0;
+        for (int y = 0; y < OVL_H; y++) {
+            ovl_line(y, line);
+            for (int x = 0; x < OVL_W; x++) {
+                uint32_t full = ovl_mix888(line[x], Sim::picture(x, y));
+                uint32_t expect = 0;
+                for (int shift = 0; shift < 24; shift += 8) {
+                    expect |= (((full >> shift) & 255) * (uint32_t)level >> 4) << shift;
+                }
+                uint32_t got = s.vid_done[y * OVL_W + x];
+                if (got != expect && wrong++ < 5) {
+                    printf("  %s: pixel %d,%d is %06x, expected %06x\n", what, x, y, got, expect);
+                }
+            }
+        }
+        return wrong;
+    };
+    ovl_upload_list(s, 0, a);
+    ovl_sprites(a.data(), (int)a.size());
+    s.wr(R_OVL_CTRL, (uint32_t)a.size() << 8 | 1u);
+    for (int level : {8, 3, 0, 15}) {
+        s.wr(R_FADE, (uint32_t)level);
+        s.run_frames(3);
+        CHECK(faded_mismatches(level, "fade") == 0, "the picture at fade level %d is wrong", level);
+    }
+    s.wr(R_FADE, 31);
+    s.run_frames(3);
+    CHECK(s.rd(R_FADE) == 16 && ovl_mismatches(s, "fade 31") == 0, "a fade level over 16 is not the full picture");
+    s.wr(R_FADE, 16);
     delete s.top;
 }
 

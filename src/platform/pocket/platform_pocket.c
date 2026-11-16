@@ -66,6 +66,14 @@ static int ovl_version(void) {
 
 bool pf_ovl_supported(void) { return ovl_version() > 0; }
 int pf_ovl_version(void) { return ovl_version(); }
+
+/* ---------- fade (version 5) ---------- */
+bool pf_fade_supported(void) { return ovl_version() >= 5; }
+void pf_fade(int level) {
+    if (ovl_version() >= 5) {
+        TAIKO(TK_FADE) = (uint32_t)(level < 0 ? 0 : level > PF_FADE_FULL ? PF_FADE_FULL : level);
+    }
+}
 uint32_t pf_ovl_capacity(void) { return ovl_version() >= 2 ? PF_OVL_SHEET : 65536; }
 bool pf_ovl_doubling(void) { return ovl_version() >= 2; }
 

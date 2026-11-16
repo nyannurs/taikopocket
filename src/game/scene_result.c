@@ -1,5 +1,6 @@
 /* Result screen: the totals of the last play. A / START: back to song select,
- * X: play the same chart again. */
+ * X: play the same chart again. Neither counts in the first seconds: someone who was
+ * still drumming when the song ended would otherwise leave before reading the score. */
 #include <stdio.h>
 
 #include "game.h"
@@ -8,8 +9,10 @@
 #define BOARD_H 176
 #define BOARD_X ((GFX_W - BOARD_W) / 2)
 #define BOARD_Y 104
+#define HOLD_FRAMES 180 /* 3 s at 60 fps before a button leaves the screen */
 
-static bool loading;
+static bool loading, open;
+static uint32_t entered;
 
 static void row(const char *label, int value, int y, uint16_t color) {
     char buf[16];
@@ -80,18 +83,30 @@ static void draw_screen(void) {
     if (r->auto_play) {
         gfx_text_outline(FONT_S, 8, 8, "AUTO PLAY (not saved)", -1, RGB(255, 96, 96), RGB(0, 0, 0), ALIGN_LEFT, 0);
     }
-    gfx_text_outline(FONT_S, GFX_W / 2, GFX_H - 24, loading ? "Loading..." : "A: song select    X: play again", -1,
-                     RGB(200, 200, 210), RGB(0, 0, 0), ALIGN_CENTER, 0);
+    if (loading || open) { /* the hint comes when the buttons do */
+        gfx_text_outline(FONT_S, GFX_W / 2, GFX_H - 24, loading ? "Loading..." : "A: song select    X: play again", -1,
+                         RGB(200, 200, 210), RGB(0, 0, 0), ALIGN_CENTER, 0);
+    }
     gfx_target(GFX_FRAME);
     gfx_bg_changed();
 }
 
 static void result_enter(void) {
     loading = false;
+    open = false;
+    entered = app_frame_count;
     draw_screen();
 }
 
 static void result_update(void) {
+    if (!open) {
+        stream_poll();
+        if (app_frame_count - entered >= HOLD_FRAMES) {
+            open = true;
+            draw_screen();
+        }
+        return;
+    }
     if (loading) {
         song_state st = song_poll();
         if (st == SONG_READY) {

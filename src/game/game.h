@@ -21,7 +21,8 @@ typedef struct {
 } scene;
 
 extern const scene scene_boot, scene_select, scene_game, scene_result, scene_settings, scene_calibrate, scene_stats;
-void app_goto(const scene *next);
+void app_goto(const scene *next); /* the next scene, after a fade through black */
+bool app_changing(void);          /* a fade out or in is running */
 extern uint32_t app_frame_count;
 
 /* ---------- input ---------- */
