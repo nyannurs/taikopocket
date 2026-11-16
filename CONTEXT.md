@@ -159,12 +159,14 @@ about the platform. Update it when something changes.
 - `docs/performance.md` has the measurements; what is left for the CPU per frame is
   mostly the HUD.
 
-### Gateware version 5 (2026-11-16): simulated, not yet built or seen on a Pocket
+### Gateware version 5 (2026-11-16): built, not yet seen on a Pocket
 
 Adds the fade register (`TK_FADE`): a multiplier on the picture after the sprite
 layer, taken over in the vertical blanking. The test bench checks levels 8, 3, 0 and
 15 against the model and that a value over 16 is the full picture. No memory added;
-three small multipliers in the video clock. The firmware calls a bitstream below 5
+three small multipliers in the video clock. Built by the Actions run of commit
+`9d7322e`: timing met (setup +0.223 ns, hold +0.287 ns), 12,358 of 18,480 ALMs (67 %),
+65 % of the block memory bits, 31 DSP blocks. The firmware calls a bitstream below 5
 "Old bitstream" in the settings and runs without the fade on it.
 
 ### Gateware version 4 (2026-11-14): confirmed on a Pocket in 0.3.0 and 0.4.0
